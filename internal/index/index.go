@@ -2,6 +2,7 @@ package index
 
 import (
 	"log"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -10,18 +11,18 @@ import (
 	"github.com/whallysson/cc-dash/internal/model"
 )
 
-// Index é o índice central in-memory de todas as sessões.
+// Index is the central in-memory index of all sessions.
 // Thread-safe via RWMutex.
 type Index struct {
 	mu sync.RWMutex
 
-	// Mapas primários
+	// Primary maps
 	sessions   map[string]*model.SessionMeta // sessionID -> meta
 	projects   map[string][]string           // slug -> []sessionID
 	fileStates map[string]model.FileState    // filePath -> state
 	fileToSess map[string]string             // filePath -> sessionID
 
-	// Cache de aggregações (invalidado em qualquer write)
+	// Aggregation cache (invalidated on any write)
 	aggDirty   bool
 	aggStats   *model.OverviewStats
 	aggCosts   *model.CostAnalytics
@@ -30,11 +31,11 @@ type Index struct {
 
 	claudeDir string
 
-	// Callback para persistência (set externamente)
+	// Callback for persistence (set externally)
 	OnSessionUpdate func(meta *model.SessionMeta, state model.FileState)
 }
 
-// New cria um novo índice vazio.
+// New creates a new empty index.
 func New(claudeDir string) *Index {
 	return &Index{
 		sessions:   make(map[string]*model.SessionMeta),
@@ -46,7 +47,7 @@ func New(claudeDir string) *Index {
 	}
 }
 
-// LoadFromCache popula o índice a partir de dados do SQLite cache.
+// LoadFromCache populates the index from SQLite cache data.
 func (idx *Index) LoadFromCache(sessions map[string]*model.SessionMeta, fileStates map[string]model.FileState) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
@@ -57,11 +58,27 @@ func (idx *Index) LoadFromCache(sessions map[string]*model.SessionMeta, fileStat
 	}
 	for path, state := range fileStates {
 		idx.fileStates[path] = state
+		if state.SessionID != "" {
+			idx.fileToSess[path] = state.SessionID
+		}
+	}
+	// Backfill fileToSess for cached file_states with empty session_id
+	// (from older schema before the session_id column was added)
+	for path := range idx.fileStates {
+		if _, ok := idx.fileToSess[path]; ok {
+			continue
+		}
+		for id, meta := range idx.sessions {
+			if meta.SourceFile == path || strings.HasSuffix(path, id+".jsonl") {
+				idx.fileToSess[path] = id
+				break
+			}
+		}
 	}
 	idx.aggDirty = true
 }
 
-// Build escaneia todos os projetos e popula o índice.
+// Build scans all projects and populates the index.
 func (idx *Index) Build() error {
 	start := time.Now()
 
@@ -90,22 +107,22 @@ func (idx *Index) Build() error {
 
 	idx.aggDirty = true
 	elapsed := time.Since(start)
-	log.Printf("[index] build completo em %v: %d parseados, %d cached, %d erros, %d total",
+	log.Printf("[index] build complete in %v: %d parsed, %d cached, %d errors, %d total",
 		elapsed, parsed, skipped, errors, len(idx.sessions))
 
 	return nil
 }
 
-// insertLocked insere ou atualiza uma sessão no índice. Deve ser chamado com mu.Lock().
+// insertLocked inserts or updates a session in the index. Must be called with mu.Lock() held.
 func (idx *Index) insertLocked(meta *model.SessionMeta, state model.FileState) {
 	sid := meta.SessionID
 	if sid == "" {
-		// Sem sessionID, usar path do arquivo como chave
+		// No sessionID, use file path as key
 		sid = state.Path
 		meta.SessionID = sid
 	}
 
-	// Se já existe, merge tokens e contadores (para parsing incremental)
+	// If already exists, merge tokens and counters (for incremental parsing)
 	if existing, ok := idx.sessions[sid]; ok {
 		mergeSession(existing, meta)
 	} else {
@@ -113,16 +130,17 @@ func (idx *Index) insertLocked(meta *model.SessionMeta, state model.FileState) {
 		idx.projects[meta.Slug] = append(idx.projects[meta.Slug], sid)
 	}
 
+	state.SessionID = sid
 	idx.fileStates[state.Path] = state
 	idx.fileToSess[state.Path] = sid
 
-	// Persistir assincronamente
+	// Persist asynchronously
 	if idx.OnSessionUpdate != nil {
 		go idx.OnSessionUpdate(idx.sessions[sid], state)
 	}
 }
 
-// mergeSession combina dados de parsing incremental com sessão existente.
+// mergeSession merges incremental parsing data with an existing session.
 func mergeSession(existing, incoming *model.SessionMeta) {
 	existing.UserMsgCount += incoming.UserMsgCount
 	existing.AsstMsgCount += incoming.AsstMsgCount
@@ -138,7 +156,7 @@ func mergeSession(existing, incoming *model.SessionMeta) {
 		existing.ModelTokens[mdl] = t
 	}
 
-	// Recalcular totais
+	// Recalculate totals
 	existing.TotalTokens = model.TokenUsage{}
 	existing.EstimatedCost = 0
 	for mdl, tokens := range existing.ModelTokens {
@@ -166,7 +184,7 @@ func mergeSession(existing, incoming *model.SessionMeta) {
 	}
 }
 
-// UpdateFile re-parseia um arquivo específico e atualiza o índice.
+// UpdateFile re-parses a specific file and updates the index.
 func (idx *Index) UpdateFile(path string) (*model.SessionMeta, error) {
 	cached := idx.getCachedStates()
 	result := processFile(path, cached)
@@ -197,16 +215,16 @@ func (idx *Index) getCachedStates() map[string]model.FileState {
 	return states
 }
 
-// --- Métodos de leitura ---
+// --- Read methods ---
 
-// GetSession retorna uma sessão por ID.
+// GetSession returns a session by ID.
 func (idx *Index) GetSession(id string) *model.SessionMeta {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 	return idx.sessions[id]
 }
 
-// GetAllSessions retorna todas as sessões ordenadas por data (mais recente primeiro).
+// GetAllSessions returns all sessions sorted by date (most recent first).
 func (idx *Index) GetAllSessions() []*model.SessionMeta {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
@@ -223,12 +241,12 @@ func (idx *Index) GetAllSessions() []*model.SessionMeta {
 	return sessions
 }
 
-// GetSessionsPaginated retorna sessões com paginação e busca.
+// GetSessionsPaginated returns sessions with pagination and search.
 func (idx *Index) GetSessionsPaginated(page, limit int, sortBy, query string) ([]*model.SessionMeta, int) {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 
-	// Filtrar
+	// Filter
 	var filtered []*model.SessionMeta
 	for _, s := range idx.sessions {
 		if query != "" {
@@ -244,7 +262,7 @@ func (idx *Index) GetSessionsPaginated(page, limit int, sortBy, query string) ([
 		filtered = append(filtered, s)
 	}
 
-	// Ordenar
+	// Sort
 	switch sortBy {
 	case "date", "":
 		sort.Slice(filtered, func(i, j int) bool {
@@ -270,7 +288,7 @@ func (idx *Index) GetSessionsPaginated(page, limit int, sortBy, query string) ([
 
 	total := len(filtered)
 
-	// Paginar
+	// Paginate
 	start := (page - 1) * limit
 	if start >= total {
 		return nil, total
@@ -283,7 +301,7 @@ func (idx *Index) GetSessionsPaginated(page, limit int, sortBy, query string) ([
 	return filtered[start:end], total
 }
 
-// GetProjectSummaries retorna resumos de todos os projetos.
+// GetProjectSummaries returns summaries of all projects.
 func (idx *Index) GetProjectSummaries() []model.ProjectSummary {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
@@ -355,7 +373,7 @@ func (idx *Index) GetProjectSummaries() []model.ProjectSummary {
 	return summaries
 }
 
-// GetProjectDetail retorna detalhes de um projeto específico.
+// GetProjectDetail returns details of a specific project.
 func (idx *Index) GetProjectDetail(slug string) (*model.ProjectSummary, []*model.SessionMeta) {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
@@ -411,7 +429,7 @@ func (idx *Index) GetProjectDetail(slug string) (*model.ProjectSummary, []*model
 	return summary, sessions
 }
 
-// GetOverviewStats retorna estatísticas agregadas para a overview.
+// GetOverviewStats returns aggregated statistics for the overview.
 func (idx *Index) GetOverviewStats() model.OverviewStats {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
@@ -430,7 +448,7 @@ func (idx *Index) GetOverviewStats() model.OverviewStats {
 		stats.TotalTokens += s.TotalTokens.Total()
 		stats.TotalCost += s.EstimatedCost
 
-		// Atividade diária
+		// Daily activity
 		dateKey := s.StartTime.Format("2006-01-02")
 		if da, ok := dailyMap[dateKey]; ok {
 			da.Sessions++
@@ -445,17 +463,17 @@ func (idx *Index) GetOverviewStats() model.OverviewStats {
 			}
 		}
 
-		// Horas de pico
+		// Peak hours
 		hour := s.StartTime.Format("15")
 		stats.HourCounts[hour]++
 
-		// Breakdown por modelo
+		// Breakdown by model
 		for mdl, tokens := range s.ModelTokens {
 			stats.ModelBreakdown[mdl] += tokens.Total()
 		}
 	}
 
-	// Converter mapa de atividade diária para slice ordenado
+	// Convert daily activity map to sorted slice
 	for _, da := range dailyMap {
 		stats.DailyActivity = append(stats.DailyActivity, *da)
 	}
@@ -463,7 +481,7 @@ func (idx *Index) GetOverviewStats() model.OverviewStats {
 		return stats.DailyActivity[i].Date < stats.DailyActivity[j].Date
 	})
 
-	// Sessões recentes (top 10)
+	// Recent sessions (top 10)
 	all := make([]*model.SessionMeta, 0, len(idx.sessions))
 	for _, s := range idx.sessions {
 		all = append(all, s)
@@ -478,7 +496,7 @@ func (idx *Index) GetOverviewStats() model.OverviewStats {
 	return stats
 }
 
-// GetCostAnalytics retorna analytics de custo.
+// GetCostAnalytics returns cost analytics.
 func (idx *Index) GetCostAnalytics() model.CostAnalytics {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
@@ -514,7 +532,7 @@ func (idx *Index) GetCostAnalytics() model.CostAnalytics {
 		}
 	}
 
-	// Custo por dia
+	// Cost per day
 	for date, cost := range dailyCosts {
 		analytics.CostByDate = append(analytics.CostByDate, model.DailyCost{Date: date, Cost: cost})
 	}
@@ -522,7 +540,7 @@ func (idx *Index) GetCostAnalytics() model.CostAnalytics {
 		return analytics.CostByDate[i].Date < analytics.CostByDate[j].Date
 	})
 
-	// Custo por projeto
+	// Cost per project
 	for slug, cost := range projectCosts {
 		analytics.CostByProject = append(analytics.CostByProject, model.ProjectCost{Slug: slug, Cost: cost})
 	}
@@ -543,7 +561,7 @@ func (idx *Index) GetCostAnalytics() model.CostAnalytics {
 	return analytics
 }
 
-// GetToolAnalytics retorna analytics de ferramentas.
+// GetToolAnalytics returns tool analytics.
 func (idx *Index) GetToolAnalytics() model.ToolAnalytics {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
@@ -639,7 +657,7 @@ func (idx *Index) GetToolAnalytics() model.ToolAnalytics {
 	return analytics
 }
 
-// GetActivityData retorna dados de atividade para heatmap e streaks.
+// GetActivityData returns activity data for heatmap and streaks.
 func (idx *Index) GetActivityData() model.ActivityData {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
@@ -672,7 +690,7 @@ func (idx *Index) GetActivityData() model.ActivityData {
 
 	data.ActiveDays = len(dateSet)
 
-	// Calcular streaks
+	// Calculate streaks
 	if len(data.Heatmap) > 0 {
 		data.CurrentStreak, data.LongestStreak = calculateStreaks(data.Heatmap)
 
@@ -684,17 +702,17 @@ func (idx *Index) GetActivityData() model.ActivityData {
 	return data
 }
 
-// calculateStreaks calcula current streak e longest streak.
+// calculateStreaks computes the current streak and longest streak.
 func calculateStreaks(heatmap []model.HeatmapEntry) (current, longest int) {
 	today := time.Now().Format("2006-01-02")
 
-	// Criar set de datas ativas
+	// Build set of active dates
 	active := make(map[string]bool)
 	for _, h := range heatmap {
 		active[h.Date] = true
 	}
 
-	// Current streak: contar para trás desde hoje
+	// Current streak: count backwards from today
 	d, _ := time.Parse("2006-01-02", today)
 	for {
 		dateStr := d.Format("2006-01-02")
@@ -727,7 +745,7 @@ func calculateStreaks(heatmap []model.HeatmapEntry) (current, longest int) {
 	return current, longest
 }
 
-// GetFilePathForSession retorna o caminho do arquivo JSONL para uma sessão.
+// GetFilePathForSession returns the JSONL file path for a session.
 func (idx *Index) GetFilePathForSession(sessionID string) string {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
@@ -740,19 +758,387 @@ func (idx *Index) GetFilePathForSession(sessionID string) string {
 	return ""
 }
 
-// GetClaudeDir retorna o diretório base do Claude.
+// GetClaudeDir returns the Claude base directory.
 func (idx *Index) GetClaudeDir() string {
 	return idx.claudeDir
 }
 
-// SessionCount retorna o número total de sessões.
+// SessionCount returns the total number of sessions.
 func (idx *Index) SessionCount() int {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 	return len(idx.sessions)
 }
 
-// ExportForCache exporta sessões e file states para persistência.
+// GetEfficiencyData computes token health and efficiency metrics.
+func (idx *Index) GetEfficiencyData() *model.EfficiencyData {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
+	data := &model.EfficiencyData{
+		TotalSessions: len(idx.sessions),
+	}
+
+	if len(idx.sessions) == 0 {
+		return data
+	}
+
+	// Collect cost-per-message for all sessions with messages
+	var costPerMsgs []float64
+	var totalCost float64
+
+	// Model aggregation
+	type modelAgg struct {
+		sessions    int
+		cost        float64
+		messages    int
+		tokens      int64
+		input       int64
+		output      int64
+		cacheRead   int64
+		cacheWrite  int64
+	}
+	models := make(map[string]*modelAgg)
+
+	// Thinking aggregation
+	var thinkSessions, noThinkSessions []float64
+	var thinkCostTotal, noThinkCostTotal float64
+	var thinkDurTotal, noThinkDurTotal float64
+	var thinkMsgTotal, noThinkMsgTotal int
+
+	// Vampire candidates
+	type vampireCandidate struct {
+		session *model.SessionMeta
+		cpm     float64
+	}
+	var vampires []vampireCandidate
+
+	// Cache by session
+	type cacheCandidate struct {
+		session  *model.SessionMeta
+		hitRate  float64
+		wasted   int64
+	}
+	var cacheCandidates []cacheCandidate
+
+	for _, s := range idx.sessions {
+		totalCost += s.EstimatedCost
+
+		// Cost per message
+		if s.TotalMsgCount > 0 {
+			cpm := s.EstimatedCost / float64(s.TotalMsgCount)
+			costPerMsgs = append(costPerMsgs, cpm)
+		}
+
+		// Model aggregation - prorate cost and messages by token share
+		sessionTotal := max(s.TotalTokens.Total(), 1)
+		for m, tu := range s.ModelTokens {
+			agg, ok := models[m]
+			if !ok {
+				agg = &modelAgg{}
+				models[m] = agg
+			}
+			share := float64(tu.Total()) / float64(sessionTotal)
+			agg.sessions++
+			agg.cost += s.EstimatedCost * share
+			agg.messages += int(math.Round(float64(s.TotalMsgCount) * share))
+			agg.tokens += tu.Total()
+			agg.input += tu.InputTokens
+			agg.output += tu.OutputTokens
+			agg.cacheRead += tu.CacheReadTokens
+			agg.cacheWrite += tu.CacheWriteTokens
+		}
+
+		// Thinking impact
+		if s.TotalMsgCount > 0 {
+			cpm := s.EstimatedCost / float64(s.TotalMsgCount)
+			if s.HasThinking {
+				thinkSessions = append(thinkSessions, cpm)
+				thinkCostTotal += s.EstimatedCost
+				thinkDurTotal += s.DurationMin
+				thinkMsgTotal += s.TotalMsgCount
+			} else {
+				noThinkSessions = append(noThinkSessions, cpm)
+				noThinkCostTotal += s.EstimatedCost
+				noThinkDurTotal += s.DurationMin
+				noThinkMsgTotal += s.TotalMsgCount
+			}
+		}
+
+		// Vampire candidates
+		if s.EstimatedCost > 0 {
+			cpm := 0.0
+			if s.TotalMsgCount > 0 {
+				cpm = s.EstimatedCost / float64(s.TotalMsgCount)
+			}
+			vampires = append(vampires, vampireCandidate{session: s, cpm: cpm})
+		}
+
+		// Cache efficiency per session
+		totalInput := s.TotalTokens.InputTokens + s.TotalTokens.CacheReadTokens + s.TotalTokens.CacheWriteTokens
+		if totalInput > 0 {
+			hitRate := float64(s.TotalTokens.CacheReadTokens) / float64(totalInput) * 100
+			wasted := s.TotalTokens.CacheWriteTokens // cache writes that could have been reads
+			cacheCandidates = append(cacheCandidates, cacheCandidate{
+				session: s,
+				hitRate: hitRate,
+				wasted:  wasted,
+			})
+		}
+	}
+
+	data.TotalCost = totalCost
+
+	// Cost per message stats
+	if len(costPerMsgs) > 0 {
+		sort.Float64s(costPerMsgs)
+		n := len(costPerMsgs)
+		sum := 0.0
+		for _, v := range costPerMsgs {
+			sum += v
+		}
+		data.CostPerMessage = model.CostPerMessageStats{
+			Mean:   sum / float64(n),
+			Median: percentile(costPerMsgs, 50),
+			P90:    percentile(costPerMsgs, 90),
+			P99:    percentile(costPerMsgs, 99),
+			Min:    costPerMsgs[0],
+			Max:    costPerMsgs[n-1],
+		}
+	}
+
+	// Cost distribution histogram
+	data.CostDistribution = buildCostDistribution(costPerMsgs)
+
+	// Model comparison
+	for m, agg := range models {
+		totalTokens := agg.input + agg.output + agg.cacheRead + agg.cacheWrite
+		cacheTotal := agg.input + agg.cacheRead + agg.cacheWrite
+		hitRate := 0.0
+		if cacheTotal > 0 {
+			hitRate = float64(agg.cacheRead) / float64(cacheTotal) * 100
+		}
+		cpm := 0.0
+		if agg.messages > 0 {
+			cpm = agg.cost / float64(agg.messages)
+		}
+		avgTokens := 0.0
+		if agg.messages > 0 {
+			avgTokens = float64(totalTokens) / float64(agg.messages)
+		}
+		data.ModelComparison = append(data.ModelComparison, model.ModelEfficiency{
+			Model:           m,
+			Sessions:        agg.sessions,
+			TotalCost:       agg.cost,
+			TotalMessages:   agg.messages,
+			CostPerMessage:  cpm,
+			AvgTokensPerMsg: avgTokens,
+			CacheHitRate:    hitRate,
+			InputTokens:     agg.input,
+			OutputTokens:    agg.output,
+			CacheReadTokens: agg.cacheRead,
+		})
+	}
+	sort.Slice(data.ModelComparison, func(i, j int) bool {
+		return data.ModelComparison[i].TotalCost > data.ModelComparison[j].TotalCost
+	})
+
+	// Thinking impact
+	thinkAvgCPM := 0.0
+	if thinkMsgTotal > 0 {
+		thinkAvgCPM = thinkCostTotal / float64(thinkMsgTotal)
+	}
+	noThinkAvgCPM := 0.0
+	if noThinkMsgTotal > 0 {
+		noThinkAvgCPM = noThinkCostTotal / float64(noThinkMsgTotal)
+	}
+	thinkAvgCost := 0.0
+	if len(thinkSessions) > 0 {
+		thinkAvgCost = thinkCostTotal / float64(len(thinkSessions))
+	}
+	noThinkAvgCost := 0.0
+	if len(noThinkSessions) > 0 {
+		noThinkAvgCost = noThinkCostTotal / float64(len(noThinkSessions))
+	}
+	thinkAvgDur := 0.0
+	if len(thinkSessions) > 0 {
+		thinkAvgDur = thinkDurTotal / float64(len(thinkSessions))
+	}
+	noThinkAvgDur := 0.0
+	if len(noThinkSessions) > 0 {
+		noThinkAvgDur = noThinkDurTotal / float64(len(noThinkSessions))
+	}
+	multiplier := 0.0
+	if noThinkAvgCPM > 0 {
+		multiplier = thinkAvgCPM / noThinkAvgCPM
+	}
+	data.ThinkingImpact = model.ThinkingImpact{
+		WithThinking: model.EfficiencyGroup{
+			Sessions:      len(thinkSessions),
+			AvgCost:       thinkAvgCost,
+			AvgCostPerMsg: thinkAvgCPM,
+			TotalCost:     thinkCostTotal,
+			AvgDuration:   thinkAvgDur,
+		},
+		WithoutThinking: model.EfficiencyGroup{
+			Sessions:      len(noThinkSessions),
+			AvgCost:       noThinkAvgCost,
+			AvgCostPerMsg: noThinkAvgCPM,
+			TotalCost:     noThinkCostTotal,
+			AvgDuration:   noThinkAvgDur,
+		},
+		CostMultiplier: multiplier,
+	}
+
+	// Vampire sessions (top 10 by cost)
+	sort.Slice(vampires, func(i, j int) bool {
+		return vampires[i].session.EstimatedCost > vampires[j].session.EstimatedCost
+	})
+	limit := 10
+	if len(vampires) < limit {
+		limit = len(vampires)
+	}
+	for _, v := range vampires[:limit] {
+		s := v.session
+		primaryModel := "unknown"
+		var maxT int64
+		for m, tu := range s.ModelTokens {
+			if tu.Total() > maxT {
+				maxT = tu.Total()
+				primaryModel = m
+			}
+		}
+		totalInput := s.TotalTokens.InputTokens + s.TotalTokens.CacheReadTokens + s.TotalTokens.CacheWriteTokens
+		hitRate := 0.0
+		if totalInput > 0 {
+			hitRate = float64(s.TotalTokens.CacheReadTokens) / float64(totalInput) * 100
+		}
+		prompt := s.FirstPrompt
+		if len(prompt) > 100 {
+			prompt = prompt[:100]
+		}
+		data.VampireSessions = append(data.VampireSessions, model.VampireSession{
+			SessionID:     s.SessionID,
+			Slug:          s.Slug,
+			FirstPrompt:   prompt,
+			Cost:          s.EstimatedCost,
+			Messages:      s.TotalMsgCount,
+			CostPerMsg:    v.cpm,
+			Duration:      s.DurationMin,
+			PrimaryModel:  primaryModel,
+			HasThinking:   s.HasThinking,
+			HasCompaction: s.HasCompaction,
+			CacheHitRate:  hitRate,
+			StartTime:     s.StartTime.Format(time.RFC3339),
+		})
+	}
+
+	// Cache by session (worst 20 by hit rate, min 5 messages to be meaningful)
+	sort.Slice(cacheCandidates, func(i, j int) bool {
+		return cacheCandidates[i].hitRate < cacheCandidates[j].hitRate
+	})
+	cacheLimit := 20
+	count := 0
+	for _, c := range cacheCandidates {
+		if count >= cacheLimit {
+			break
+		}
+		if c.session.TotalMsgCount < 5 {
+			continue
+		}
+		prompt := c.session.FirstPrompt
+		if len(prompt) > 80 {
+			prompt = prompt[:80]
+		}
+		data.CacheBySession = append(data.CacheBySession, model.SessionCacheInfo{
+			SessionID:    c.session.SessionID,
+			Slug:         c.session.Slug,
+			FirstPrompt:  prompt,
+			CacheHitRate: math.Round(c.hitRate*10) / 10,
+			Cost:         c.session.EstimatedCost,
+			Messages:     c.session.TotalMsgCount,
+			WastedTokens: c.wasted,
+		})
+		count++
+	}
+
+	// Health score (0-100)
+	data.HealthScore = computeHealthScore(data)
+
+	return data
+}
+
+func percentile(sorted []float64, p int) float64 {
+	if len(sorted) == 0 {
+		return 0
+	}
+	idx := float64(p) / 100.0 * float64(len(sorted)-1)
+	lower := int(math.Floor(idx))
+	upper := int(math.Ceil(idx))
+	if lower == upper {
+		return sorted[lower]
+	}
+	frac := idx - float64(lower)
+	return sorted[lower]*(1-frac) + sorted[upper]*frac
+}
+
+func buildCostDistribution(cpms []float64) []model.CostBucket {
+	buckets := []model.CostBucket{
+		{Label: "$0-0.01", Min: 0, Max: 0.01},
+		{Label: "$0.01-0.05", Min: 0.01, Max: 0.05},
+		{Label: "$0.05-0.10", Min: 0.05, Max: 0.10},
+		{Label: "$0.10-0.25", Min: 0.10, Max: 0.25},
+		{Label: "$0.25-0.50", Min: 0.25, Max: 0.50},
+		{Label: "$0.50-1.00", Min: 0.50, Max: 1.00},
+		{Label: "$1.00+", Min: 1.00, Max: math.MaxFloat64},
+	}
+	for _, cpm := range cpms {
+		for i := range buckets {
+			if cpm >= buckets[i].Min && cpm < buckets[i].Max {
+				buckets[i].Count++
+				break
+			}
+		}
+	}
+	return buckets
+}
+
+func computeHealthScore(data *model.EfficiencyData) int {
+	score := 100
+
+	// Penalize if cache hit rate is low across models
+	for _, m := range data.ModelComparison {
+		if m.CacheHitRate < 30 && m.Sessions > 5 {
+			score -= 15
+		} else if m.CacheHitRate < 50 && m.Sessions > 5 {
+			score -= 8
+		}
+	}
+
+	// Penalize if thinking multiplier is too high
+	if data.ThinkingImpact.CostMultiplier > 3.0 {
+		score -= 15
+	} else if data.ThinkingImpact.CostMultiplier > 2.0 {
+		score -= 8
+	}
+
+	// Penalize if P99 cost-per-message is extreme
+	if data.CostPerMessage.Median > 0 {
+		ratio := data.CostPerMessage.P99 / data.CostPerMessage.Median
+		if ratio > 20 {
+			score -= 15
+		} else if ratio > 10 {
+			score -= 8
+		}
+	}
+
+	if score < 0 {
+		score = 0
+	}
+	return score
+}
+
+// ExportForCache exports sessions and file states for persistence.
 func (idx *Index) ExportForCache() (map[string]*model.SessionMeta, map[string]model.FileState) {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
@@ -768,7 +1154,7 @@ func (idx *Index) ExportForCache() (map[string]*model.SessionMeta, map[string]mo
 	return sessions, states
 }
 
-// containsCI faz busca case-insensitive.
+// containsCI performs a case-insensitive search.
 func containsCI(haystack, needle string) bool {
 	h := strings.ToLower(haystack)
 	n := strings.ToLower(needle)

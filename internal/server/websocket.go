@@ -11,26 +11,26 @@ import (
 	"nhooyr.io/websocket"
 )
 
-// WSHub gerencia conexões WebSocket e broadcast.
+// WSHub manages WebSocket connections and broadcast.
 type WSHub struct {
 	mu    sync.RWMutex
 	conns map[*websocket.Conn]context.CancelFunc
 }
 
-// NewWSHub cria um novo hub.
+// NewWSHub creates a new hub.
 func NewWSHub() *WSHub {
 	return &WSHub{
 		conns: make(map[*websocket.Conn]context.CancelFunc),
 	}
 }
 
-// HandleWS é o handler HTTP para upgrade de WebSocket.
+// HandleWS is the HTTP handler for WebSocket upgrade.
 func (h *WSHub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		InsecureSkipVerify: true, // CORS local
 	})
 	if err != nil {
-		log.Printf("[ws] erro no accept: %v", err)
+		log.Printf("[ws] accept error: %v", err)
 		return
 	}
 
@@ -39,9 +39,9 @@ func (h *WSHub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	h.conns[conn] = cancel
 	h.mu.Unlock()
 
-	log.Printf("[ws] nova conexão (%d total)", h.count())
+	log.Printf("[ws] new connection (%d total)", h.count())
 
-	// Manter conexão viva com pings
+	// Keep connection alive with pings
 	go func() {
 		defer func() {
 			h.remove(conn)
@@ -60,7 +60,7 @@ func (h *WSHub) HandleWS(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Ler mensagens do cliente (descartadas, mas necessário para detectar disconnect)
+	// Read client messages (discarded, but needed to detect disconnect)
 	for {
 		_, _, err := conn.Read(ctx)
 		if err != nil {
@@ -69,7 +69,7 @@ func (h *WSHub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Broadcast envia uma mensagem para todos os clientes conectados.
+// Broadcast sends a message to all connected clients.
 func (h *WSHub) Broadcast(resource string, data interface{}) {
 	msg, err := json.Marshal(map[string]interface{}{
 		"type":     "update",
@@ -108,7 +108,7 @@ func (h *WSHub) count() int {
 	return len(h.conns)
 }
 
-// Close fecha todas as conexões.
+// Close closes all connections.
 func (h *WSHub) Close() {
 	h.mu.Lock()
 	defer h.mu.Unlock()

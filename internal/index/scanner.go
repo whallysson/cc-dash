@@ -11,15 +11,15 @@ import (
 	"github.com/whallysson/cc-dash/internal/model"
 )
 
-// ScanResult contém o resultado do scan de um arquivo.
+// ScanResult contains the result of scanning a file.
 type ScanResult struct {
 	Meta   *model.SessionMeta
 	State  model.FileState
 	Err    error
 }
 
-// ScanProjects escaneia ~/.claude/projects/ e parseia todos os JSONLs em paralelo.
-// Retorna os metadados de todas as sessões e os estados dos arquivos.
+// ScanProjects scans ~/.claude/projects/ and parses all JSONLs in parallel.
+// Returns metadata for all sessions and file states.
 func ScanProjects(claudeDir string, cachedStates map[string]model.FileState) ([]ScanResult, error) {
 	projectsDir := filepath.Join(claudeDir, "projects")
 
@@ -28,8 +28,8 @@ func ScanProjects(claudeDir string, cachedStates map[string]model.FileState) ([]
 		return nil, err
 	}
 
-	// Coletar todos os arquivos JSONL (excluindo .summary.jsonl)
-	// Estrutura: projects/<slug>/<session>.jsonl (principal)
+	// Collect all JSONL files (excluding .summary.jsonl)
+	// Structure: projects/<slug>/<session>.jsonl (main)
 	//            projects/<slug>/<session-uuid>/subagents/<subagent>.jsonl
 	var files []string
 	for _, entry := range entries {
@@ -40,9 +40,9 @@ func ScanProjects(claudeDir string, cachedStates map[string]model.FileState) ([]
 		collectJSONLFiles(slugDir, &files)
 	}
 
-	log.Printf("[scanner] encontrados %d arquivos JSONL", len(files))
+	log.Printf("[scanner] found %d JSONL files", len(files))
 
-	// Worker pool concorrente
+	// Concurrent worker pool
 	numWorkers := runtime.NumCPU()
 	if numWorkers > 12 {
 		numWorkers = 12
@@ -63,13 +63,13 @@ func ScanProjects(claudeDir string, cachedStates map[string]model.FileState) ([]
 		}()
 	}
 
-	// Enviar jobs
+	// Send jobs
 	for _, f := range files {
 		jobs <- f
 	}
 	close(jobs)
 
-	// Coletar resultados
+	// Collect results
 	go func() {
 		wg.Wait()
 		close(results)
@@ -83,7 +83,7 @@ func ScanProjects(claudeDir string, cachedStates map[string]model.FileState) ([]
 	return allResults, nil
 }
 
-// processFile processa um arquivo JSONL, usando cache quando possível.
+// processFile processes a JSONL file, using cache when possible.
 func processFile(path string, cachedStates map[string]model.FileState) ScanResult {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -93,16 +93,16 @@ func processFile(path string, cachedStates map[string]model.FileState) ScanResul
 	currentMtime := info.ModTime()
 	currentSize := info.Size()
 
-	// Verificar cache: se mtime e size não mudaram, skip
+	// Check cache: skip if mtime and size unchanged
 	if cached, ok := cachedStates[path]; ok {
 		if cached.Mtime.Equal(currentMtime) && cached.Size == currentSize {
 			return ScanResult{
 				State: cached,
-				// Meta será nil -- o chamador deve usar o cache do índice
+				// Meta will be nil - the caller should use the index cache
 			}
 		}
 
-		// Arquivo mudou: parsing incremental desde o último offset
+		// File changed: incremental parsing from last offset
 		if currentSize > cached.Size && cached.Offset > 0 {
 			meta, newOffset, err := ParseSessionFileFrom(path, cached.Offset)
 			if err == nil && meta != nil {
@@ -119,7 +119,7 @@ func processFile(path string, cachedStates map[string]model.FileState) ScanResul
 		}
 	}
 
-	// Parse completo
+	// Full parse
 	meta, finalOffset, err := ParseSessionFile(path)
 	if err != nil {
 		return ScanResult{Err: err}
@@ -136,15 +136,15 @@ func processFile(path string, cachedStates map[string]model.FileState) ScanResul
 	}
 }
 
-// DiscoverMemoryFiles encontra todos os arquivos de memória.
+// DiscoverMemoryFiles finds all memory files.
 func DiscoverMemoryFiles(claudeDir string) []string {
 	var files []string
 
-	// Memória global
+	// Global memory
 	globalMemDir := filepath.Join(claudeDir, "memory")
 	walkDir(globalMemDir, ".md", &files)
 
-	// Memória por projeto
+	// Per-project memory
 	projectsDir := filepath.Join(claudeDir, "projects")
 	entries, err := os.ReadDir(projectsDir)
 	if err != nil {
@@ -162,8 +162,8 @@ func DiscoverMemoryFiles(claudeDir string) []string {
 	return files
 }
 
-// collectJSONLFiles coleta recursivamente arquivos JSONL de um diretório de projeto.
-// Vai até 3 níveis de profundidade para capturar subagent JSONLs.
+// collectJSONLFiles recursively collects JSONL files from a project directory.
+// Goes up to 3 levels deep to capture subagent JSONLs.
 func collectJSONLFiles(dir string, files *[]string) {
 	collectJSONLRecursive(dir, files, 0, 3)
 }
@@ -180,7 +180,7 @@ func collectJSONLRecursive(dir string, files *[]string, depth, maxDepth int) {
 		name := e.Name()
 		path := filepath.Join(dir, name)
 		if e.IsDir() {
-			// Ignorar diretórios memory/ e tool-results/
+			// Skip memory/ and tool-results/ directories
 			if name == "memory" || name == "tool-results" {
 				continue
 			}

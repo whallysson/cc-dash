@@ -11,9 +11,9 @@ import (
 	"github.com/whallysson/cc-dash/internal/util"
 )
 
-// ParseReplay parseia um arquivo JSONL de sessão para replay, com paginação.
-// offset: número de turns relevantes a pular
-// limit: número máximo de turns a retornar (0 = todos)
+// ParseReplay parses a session JSONL file for replay, with pagination.
+// offset: number of relevant turns to skip
+// limit: maximum number of turns to return (0 = all)
 func ParseReplay(path string, offset, limit int) (*model.ReplayData, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -87,7 +87,7 @@ func ParseReplay(path string, offset, limit int) (*model.ReplayData, error) {
 			}
 		}
 
-		// Extrair metadados
+		// Extract metadata
 		if data.Slug == "" {
 			if slug := peekStringField(line, "slug"); slug != "" {
 				data.Slug = slug
@@ -144,7 +144,7 @@ func peekStringField(line []byte, field string) string {
 	return string(line[start : start+end])
 }
 
-// Estruturas parciais para parsing
+// Partial structs for parsing
 type replayLine struct {
 	Type      string     `json:"type"`
 	Timestamp string     `json:"timestamp"`
@@ -194,7 +194,7 @@ func parseUserTurn(line []byte, index int) *model.ReplayTurn {
 		turn.Timestamp = ts
 	}
 
-	// Extrair texto do content
+	// Extract text from content
 	turn.Text = extractText(parsed.Message.Content)
 
 	return turn
@@ -232,7 +232,7 @@ func parseAssistantTurn(line []byte, index int) *model.ReplayTurn {
 		turn.Cost = model.CalculateCost(parsed.Message.Model, turn.Tokens)
 	}
 
-	// Content: texto, thinking, tool calls
+	// Content: text, thinking, tool calls
 	if parsed.Message.Content != nil {
 		var blocks []contentBlock
 		if err := json.Unmarshal(parsed.Message.Content, &blocks); err == nil {
@@ -263,7 +263,7 @@ func parseAssistantTurn(line []byte, index int) *model.ReplayTurn {
 }
 
 func parseCompaction(line []byte, turnIndex int) *model.CompactionEvent {
-	// Verificar se é um evento de compaction
+	// Check if this is a compaction event
 	var raw map[string]interface{}
 	if err := json.Unmarshal(line, &raw); err != nil {
 		return nil
@@ -294,13 +294,13 @@ func extractText(content json.RawMessage) string {
 		return ""
 	}
 
-	// Tentar como string
+	// Try as string
 	var textStr string
 	if err := json.Unmarshal(content, &textStr); err == nil {
 		return cleanText(textStr)
 	}
 
-	// Tentar como array
+	// Try as array
 	var blocks []contentBlock
 	if err := json.Unmarshal(content, &blocks); err == nil {
 		var parts []string

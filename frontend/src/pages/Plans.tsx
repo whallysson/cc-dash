@@ -1,34 +1,62 @@
-import { api } from '../lib/api'
-import { useApi } from '../hooks/useApi'
-import { formatRelative } from '../lib/format'
 import { useState } from 'react'
+import { api } from '@/lib/api'
+import { useApi } from '@/hooks/useApi'
+import { formatRelative } from '@/lib/format'
+import { Card } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { ChevronDown, FileText } from 'lucide-react'
 
 export function Component() {
   const { data, loading } = useApi(() => api.plans())
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  if (loading || !data) return <div className="text-zinc-500">Carregando...</div>
+  if (loading || !data) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-8 w-48" />
+        {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-bold">Plans ({data.length})</h2>
-      <div className="space-y-2">
-        {data.map(p => (
-          <div key={p.path} className="bg-zinc-900 border border-zinc-800 rounded-lg">
-            <button
-              onClick={() => setExpanded(expanded === p.path ? null : p.path)}
-              className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-zinc-800/30"
-            >
-              <span className="text-sm text-zinc-300">{p.name}</span>
-              <span className="text-xs text-zinc-600">{formatRelative(p.mod_time)}</span>
-            </button>
-            {expanded === p.path && (
-              <div className="border-t border-zinc-800 px-4 py-3">
-                <pre className="text-xs text-zinc-400 whitespace-pre-wrap max-h-96 overflow-y-auto">{p.content}</pre>
-              </div>
-            )}
-          </div>
-        ))}
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight">Plans</h2>
+        <p className="text-sm text-muted-foreground">{data.length} plan files</p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        {data.map(p => {
+          const isExpanded = expanded === p.path
+          return (
+            <Card key={p.path}>
+              <button
+                onClick={() => setExpanded(isExpanded ? null : p.path)}
+                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted/30 transition-colors rounded-xl"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText className="size-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm font-medium truncate">{p.name}</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 ml-2">
+                  <span className="text-xs text-muted-foreground tabular-nums">{formatRelative(p.mod_time)}</span>
+                  <ChevronDown className={`size-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                </div>
+              </button>
+              {isExpanded && (
+                <div className="border-t px-4 py-3">
+                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap max-h-[500px] overflow-y-auto leading-relaxed font-mono">
+                    {p.content}
+                  </pre>
+                </div>
+              )}
+            </Card>
+          )
+        })}
+        {data.length === 0 && (
+          <Card className="px-4 py-8 text-center text-muted-foreground text-sm">No plans found</Card>
+        )}
       </div>
     </div>
   )

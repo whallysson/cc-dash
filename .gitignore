@@ -1,4 +1,4 @@
-# Build
+# Build artifacts
 build/
 cc-dash
 
@@ -8,20 +8,74 @@ frontend/dist/
 frontend/.vite/
 frontend/bun.lock
 
-# IDE
+# Embedded static assets (rebuilt from frontend/dist)
+internal/server/static/assets/
+internal/server/static/index.html
+
+# AI agents / coding assistants
+.claude/
+.claude_output/
+.cursor/
+.windsurf/
+.aider*
+.codeium/
+.continue/
+.copilot/
+.github/copilot/
+.tabby/
+CLAUDE.md
+.cursorrules
+.windsurfrules
+
+# IDE / editor
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
+*.sublime-project
+*.sublime-workspace
+.project
+.settings/
 
 # OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 
 # Go
 *.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 *.test
 *.out
+*.prof
+*.pprof
+vendor/
 
-# Cache
+# Cache / database
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Temporary
+tmp/
+.tmp/
+*.bak
+*.orig

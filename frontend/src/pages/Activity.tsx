@@ -1,27 +1,57 @@
-import { api } from '../lib/api'
-import { useApi } from '../hooks/useApi'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { api } from '@/lib/api'
+import { useApi } from '@/hooks/useApi'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Flame, Trophy, CalendarDays, Hash } from 'lucide-react'
+
+function ChartTip({ active, payload, label }: { active?: boolean; payload?: Array<{ name?: string; value?: number; color?: string }>; label?: string }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="rounded-lg border bg-popover px-3 py-2 text-sm shadow-lg">
+      <p className="text-muted-foreground mb-1">{label}</p>
+      {payload.map((e, i) => (
+        <p key={i} className="font-medium tabular-nums">{e.value?.toLocaleString()}</p>
+      ))}
+    </div>
+  )
+}
+
+const STAT_CARDS = [
+  { key: 'current_streak', label: 'Current Streak', suffix: 'd', icon: Flame },
+  { key: 'longest_streak', label: 'Longest Streak', suffix: 'd', icon: Trophy },
+  { key: 'active_days', label: 'Active Days', suffix: '', icon: CalendarDays },
+  { key: 'total_days', label: 'Total Days', suffix: '', icon: Hash },
+] as const
 
 export function Component() {
   const { data, loading } = useApi(() => api.activity())
 
-  if (loading || !data) return <div className="text-zinc-500">Carregando...</div>
+  if (loading || !data) {
+    return (
+      <div className="flex flex-col gap-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+        </div>
+        <Skeleton className="h-[200px] w-full rounded-xl" />
+      </div>
+    )
+  }
 
-  // Gerar grid de 52 semanas x 7 dias para heatmap
   const dateMap = new Map(data.heatmap.map(h => [h.date, h.count]))
   const maxCount = Math.max(...data.heatmap.map(h => h.count), 1)
-
   const today = new Date()
+
   const weeks: { date: string; count: number; dow: number }[][] = []
   let currentWeek: { date: string; count: number; dow: number }[] = []
 
-  // Voltar 364 dias (52 semanas)
   for (let i = 364; i >= 0; i--) {
     const d = new Date(today)
     d.setDate(d.getDate() - i)
     const dateStr = d.toISOString().slice(0, 10)
     const dow = d.getDay()
     const count = dateMap.get(dateStr) || 0
-
     if (dow === 0 && currentWeek.length > 0) {
       weeks.push(currentWeek)
       currentWeek = []
@@ -31,113 +61,121 @@ export function Component() {
   if (currentWeek.length > 0) weeks.push(currentWeek)
 
   function getColor(count: number): string {
-    if (count === 0) return 'bg-zinc-800/50'
+    if (count === 0) return 'bg-muted/30'
     const intensity = count / maxCount
-    if (intensity > 0.75) return 'bg-orange-500'
-    if (intensity > 0.5) return 'bg-orange-600'
-    if (intensity > 0.25) return 'bg-orange-700'
-    return 'bg-orange-800'
+    if (intensity > 0.75) return 'bg-primary'
+    if (intensity > 0.5) return 'bg-primary/70'
+    if (intensity > 0.25) return 'bg-primary/45'
+    return 'bg-primary/25'
   }
+
+  const dayOfWeekData = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => ({
+    day: day.slice(0, 3),
+    count: data.day_of_week[day] || 0,
+  }))
+
+  const peakHoursData = Array.from({ length: 24 }, (_, h) => {
+    const key = String(h).padStart(2, '0')
+    return { hour: `${key}h`, count: data.peak_hours[key] || data.peak_hours[String(h)] || 0 }
+  })
 
   const dayLabels = ['', 'Mon', '', 'Wed', '', 'Fri', '']
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold">Activity</h2>
-
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-3">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-          <div className="text-xs text-zinc-500">Current Streak</div>
-          <div className="text-2xl font-bold text-orange-400">{data.current_streak}d</div>
-        </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-          <div className="text-xs text-zinc-500">Longest Streak</div>
-          <div className="text-2xl font-bold text-zinc-200">{data.longest_streak}d</div>
-        </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-          <div className="text-xs text-zinc-500">Active Days</div>
-          <div className="text-2xl font-bold text-zinc-200">{data.active_days}</div>
-        </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-          <div className="text-xs text-zinc-500">Total Days</div>
-          <div className="text-2xl font-bold text-zinc-200">{data.total_days}</div>
-        </div>
+    <div className="flex flex-col gap-6">
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight">Activity</h2>
+        <p className="text-sm text-muted-foreground">Your coding activity over time</p>
       </div>
 
-      {/* Heatmap */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-zinc-300 mb-3">Activity Heatmap</h3>
-        <div className="flex gap-1">
-          <div className="flex flex-col gap-1 mr-1">
-            {dayLabels.map((l, i) => (
-              <div key={i} className="h-3 text-[10px] text-zinc-600 leading-3">{l}</div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {STAT_CARDS.map(({ key, label, suffix, icon: Icon }) => (
+          <Card key={key}>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">{label}</CardTitle>
+              <Icon className="size-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold tabular-nums">{data[key]}{suffix}</div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Activity Heatmap</CardTitle>
+          <CardDescription>365-day contribution graph</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-[3px] overflow-x-auto pb-2">
+            <div className="flex flex-col gap-[3px] mr-1 shrink-0">
+              {dayLabels.map((l, i) => (
+                <div key={i} className="h-[12px] text-[10px] text-muted-foreground leading-[12px]">{l}</div>
+              ))}
+            </div>
+            {weeks.map((week, wi) => (
+              <div key={wi} className="flex flex-col gap-[3px]">
+                {Array.from({ length: 7 }, (_, dow) => {
+                  const day = week.find(d => d.dow === dow)
+                  if (!day) return <div key={dow} className="size-[12px]" />
+                  return (
+                    <div key={dow} className={`size-[12px] rounded-sm ${getColor(day.count)} group relative cursor-default`}>
+                      <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 rounded-lg border bg-popover px-2 py-1 text-[10px] shadow-lg opacity-0 group-hover:opacity-100 whitespace-nowrap z-10 pointer-events-none">
+                        {day.date}: {day.count} sessions
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             ))}
           </div>
-          {weeks.map((week, wi) => (
-            <div key={wi} className="flex flex-col gap-1">
-              {Array.from({ length: 7 }, (_, dow) => {
-                const day = week.find(d => d.dow === dow)
-                if (!day) return <div key={dow} className="w-3 h-3" />
-                return (
-                  <div
-                    key={dow}
-                    className={`w-3 h-3 rounded-sm ${getColor(day.count)} group relative`}
-                  >
-                    <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-zinc-700 text-[10px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-10">
-                      {day.date}: {day.count}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ))}
-        </div>
-      </div>
+          <div className="flex items-center gap-1.5 mt-3 justify-end">
+            <span className="text-[10px] text-muted-foreground mr-1">Less</span>
+            <div className="size-[10px] rounded-sm bg-muted/30" />
+            <div className="size-[10px] rounded-sm bg-primary/25" />
+            <div className="size-[10px] rounded-sm bg-primary/45" />
+            <div className="size-[10px] rounded-sm bg-primary/70" />
+            <div className="size-[10px] rounded-sm bg-primary" />
+            <span className="text-[10px] text-muted-foreground ml-1">More</span>
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Day of Week */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-zinc-300 mb-3">Day of Week</h3>
-          <div className="space-y-2">
-            {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => {
-              const count = data.day_of_week[day] || 0
-              const max = Math.max(...Object.values(data.day_of_week), 1)
-              return (
-                <div key={day} className="flex items-center gap-2">
-                  <span className="w-12 text-xs text-zinc-500">{day.slice(0, 3)}</span>
-                  <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-orange-500/70 rounded-full" style={{ width: `${(count / max) * 100}%` }} />
-                  </div>
-                  <span className="w-8 text-right text-xs text-zinc-400">{count}</span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Day of Week</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={dayOfWeekData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="day" stroke="var(--muted-foreground)" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <YAxis stroke="var(--muted-foreground)" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                <Tooltip content={<ChartTip />} />
+                <Bar dataKey="count" fill="currentColor" className="fill-primary" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
 
-        {/* Peak Hours */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-zinc-300 mb-3">Peak Hours</h3>
-          <div className="flex items-end gap-1 h-32">
-            {Array.from({ length: 24 }, (_, h) => {
-              const key = String(h).padStart(2, '0')
-              const count = data.peak_hours[key] || data.peak_hours[String(h)] || 0
-              const max = Math.max(...Object.values(data.peak_hours), 1)
-              return (
-                <div key={h} className="flex-1 group relative">
-                  <div className="bg-orange-500/60 hover:bg-orange-400 rounded-t transition-colors" style={{ height: `${(count / max) * 100}%` }} />
-                  <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-zinc-800 text-[10px] px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-10">
-                    {key}:00 ({count})
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          <div className="flex justify-between text-[10px] text-zinc-600 mt-1">
-            <span>00</span><span>06</span><span>12</span><span>18</span><span>23</span>
-          </div>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Peak Hours</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={peakHoursData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="hour" stroke="var(--muted-foreground)" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} interval={2} />
+                <YAxis stroke="var(--muted-foreground)" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                <Tooltip content={<ChartTip />} />
+                <Bar dataKey="count" fill="currentColor" className="fill-chart-3" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

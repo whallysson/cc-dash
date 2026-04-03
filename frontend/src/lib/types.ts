@@ -150,3 +150,58 @@ export interface TodoFile {
   items: { id: string; content: string; status: string; priority?: string }[]
   mod_time: string
 }
+
+export interface EfficiencyData {
+  cost_per_message: {
+    mean: number
+    median: number
+    p90: number
+    p99: number
+    min: number
+    max: number
+  }
+  model_comparison: {
+    model: string
+    sessions: number
+    total_cost: number
+    total_messages: number
+    cost_per_message: number
+    avg_tokens_per_message: number
+    cache_hit_rate: number
+    input_tokens: number
+    output_tokens: number
+    cache_read_tokens: number
+  }[]
+  thinking_impact: {
+    with_thinking: { sessions: number; avg_cost: number; avg_cost_per_message: number; total_cost: number; avg_duration: number }
+    without_thinking: { sessions: number; avg_cost: number; avg_cost_per_message: number; total_cost: number; avg_duration: number }
+    cost_multiplier: number
+  }
+  vampire_sessions: {
+    session_id: string
+    slug: string
+    first_prompt: string
+    cost: number
+    messages: number
+    cost_per_message: number
+    duration_minutes: number
+    primary_model: string
+    has_thinking: boolean
+    has_compaction: boolean
+    cache_hit_rate: number
+    start_time: string
+  }[]
+  cache_by_session: {
+    session_id: string
+    slug: string
+    first_prompt: string
+    cache_hit_rate: number
+    cost: number
+    messages: number
+    wasted_tokens: number
+  }[]
+  cost_distribution: { label: string; count: number }[]
+  health_score: number
+  total_sessions: number
+  total_cost: number
+}

@@ -2,7 +2,9 @@ import './index.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
-import { Layout } from './components/layout/Layout'
+import { TooltipProvider } from '@/components/ui/tooltip'
+import { ThemeProvider } from '@/context/theme-provider'
+import { Layout } from '@/components/layout/Layout'
 
 const router = createBrowserRouter([
   {
@@ -17,6 +19,7 @@ const router = createBrowserRouter([
       { path: 'costs', lazy: () => import('./pages/Costs') },
       { path: 'tools', lazy: () => import('./pages/Tools') },
       { path: 'activity', lazy: () => import('./pages/Activity') },
+      { path: 'token-health', lazy: () => import('./pages/TokenHealth') },
       { path: 'history', lazy: () => import('./pages/History') },
       { path: 'memory', lazy: () => import('./pages/Memory') },
       { path: 'todos', lazy: () => import('./pages/Todos') },
@@ -29,6 +32,10 @@ const router = createBrowserRouter([
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <ThemeProvider>
+      <TooltipProvider>
+        <RouterProvider router={router} />
+      </TooltipProvider>
+    </ThemeProvider>
   </StrictMode>
 )

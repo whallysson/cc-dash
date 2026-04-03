@@ -4,7 +4,7 @@ BUILD_DIR = build
 FRONTEND_DIR = frontend
 STATIC_DIR = internal/server/static
 
-.PHONY: dev build build-frontend build-backend build-all clean install run
+.PHONY: dev build build-frontend build-backend build-all clean install run stop
 
 # Desenvolvimento: roda Go server (precisa build-frontend antes)
 dev: build-frontend
@@ -55,7 +55,24 @@ install: build
 		echo "Copie manualmente: cp $(BUILD_DIR)/$(BINARY) para um diretorio no PATH"
 	@echo ">> $(BINARY) instalado"
 
-# Limpar
+# Stop all cc-dash processes
+stop:
+	@pids=$$(pgrep -f '$(BINARY)' | grep -v $$$$); \
+	if [ -n "$$pids" ]; then \
+		echo ">> stopping cc-dash (PIDs: $$pids)"; \
+		echo "$$pids" | xargs kill 2>/dev/null; \
+		sleep 1; \
+		alive=$$(pgrep -f '$(BINARY)' | grep -v $$$$); \
+		if [ -n "$$alive" ]; then \
+			echo ">> force killing (PIDs: $$alive)"; \
+			echo "$$alive" | xargs kill -9 2>/dev/null; \
+		fi; \
+		echo ">> stopped"; \
+	else \
+		echo ">> no cc-dash processes running"; \
+	fi
+
+# Clean build artifacts
 clean:
 	rm -rf $(BUILD_DIR) $(BINARY)
-	@echo ">> limpo"
+	@echo ">> cleaned"

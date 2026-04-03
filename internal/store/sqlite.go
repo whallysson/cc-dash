@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/whallysson/cc-dash/internal/model"
@@ -13,12 +14,13 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Store persiste o índice de sessões em SQLite para warm starts.
+// Store persists the session index in SQLite for warm starts.
 type Store struct {
 	db *sql.DB
+	mu sync.Mutex // serialize all writes to avoid SQLITE_BUSY
 }
 
-// Open abre ou cria o banco de cache.
+// Open opens or creates the cache database.
 func Open(claudeDir string) (*Store, error) {
 	dbPath := filepath.Join(claudeDir, ".cc-dash-cache.db")
 
@@ -27,9 +29,9 @@ func Open(claudeDir string) (*Store, error) {
 		return nil, err
 	}
 
-	// WAL mode para leituras concorrentes
 	db.Exec("PRAGMA journal_mode=WAL")
 	db.Exec("PRAGMA synchronous=NORMAL")
+	db.Exec("PRAGMA busy_timeout=5000")
 
 	s := &Store{db: db}
 	if err := s.migrate(); err != nil {
@@ -52,19 +54,24 @@ func (s *Store) migrate() error {
 			path TEXT PRIMARY KEY,
 			mtime TEXT NOT NULL,
 			size INTEGER NOT NULL,
-			offset INTEGER NOT NULL
+			offset INTEGER NOT NULL,
+			session_id TEXT NOT NULL DEFAULT ''
 		);
 		CREATE INDEX IF NOT EXISTS idx_sessions_slug ON sessions(slug);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	// Migrate existing table: add session_id column if missing
+	s.db.Exec("ALTER TABLE file_states ADD COLUMN session_id TEXT NOT NULL DEFAULT ''")
+	return nil
 }
 
-// LoadSessions carrega todas as sessões do cache.
+// LoadSessions loads all sessions from cache.
 func (s *Store) LoadSessions() (map[string]*model.SessionMeta, map[string]model.FileState, error) {
 	sessions := make(map[string]*model.SessionMeta)
 	fileStates := make(map[string]model.FileState)
 
-	// Carregar sessões
 	rows, err := s.db.Query("SELECT session_id, data_json FROM sessions")
 	if err != nil {
 		return sessions, fileStates, err
@@ -83,59 +90,69 @@ func (s *Store) LoadSessions() (map[string]*model.SessionMeta, map[string]model.
 		sessions[id] = &meta
 	}
 
-	// Carregar file states
-	rows2, err := s.db.Query("SELECT path, mtime, size, offset FROM file_states")
+	rows2, err := s.db.Query("SELECT path, mtime, size, offset, COALESCE(session_id, '') FROM file_states")
 	if err != nil {
 		return sessions, fileStates, err
 	}
 	defer rows2.Close()
 
 	for rows2.Next() {
-		var path, mtimeStr string
+		var path, mtimeStr, sessionID string
 		var size, offset int64
-		if err := rows2.Scan(&path, &mtimeStr, &size, &offset); err != nil {
+		if err := rows2.Scan(&path, &mtimeStr, &size, &offset, &sessionID); err != nil {
 			continue
 		}
 		mtime, _ := time.Parse(time.RFC3339Nano, mtimeStr)
 		fileStates[path] = model.FileState{
-			Path:   path,
-			Mtime:  mtime,
-			Size:   size,
-			Offset: offset,
+			Path:      path,
+			Mtime:     mtime,
+			Size:      size,
+			Offset:    offset,
+			SessionID: sessionID,
 		}
 	}
 
 	return sessions, fileStates, nil
 }
 
-// SaveSession persiste uma sessão no cache.
+// SaveSession persists a session to cache.
 func (s *Store) SaveSession(meta *model.SessionMeta) {
 	data, err := json.Marshal(meta)
 	if err != nil {
 		return
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	_, err = s.db.Exec(
 		`INSERT OR REPLACE INTO sessions (session_id, slug, data_json, updated_at) VALUES (?, ?, ?, ?)`,
 		meta.SessionID, meta.Slug, string(data), time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
-		log.Printf("[store] erro ao salvar sessão %s: %v", meta.SessionID, err)
+		log.Printf("[store] failed to save session %s: %v", meta.SessionID, err)
 	}
 }
 
-// SaveFileState persiste o estado de um arquivo no cache.
+// SaveFileState persists a file state to cache.
 func (s *Store) SaveFileState(fs model.FileState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO file_states (path, mtime, size, offset) VALUES (?, ?, ?, ?)`,
-		fs.Path, fs.Mtime.Format(time.RFC3339Nano), fs.Size, fs.Offset,
+		`INSERT OR REPLACE INTO file_states (path, mtime, size, offset, session_id) VALUES (?, ?, ?, ?, ?)`,
+		fs.Path, fs.Mtime.Format(time.RFC3339Nano), fs.Size, fs.Offset, fs.SessionID,
 	)
 	if err != nil {
-		log.Printf("[store] erro ao salvar file state %s: %v", filepath.Base(fs.Path), err)
+		log.Printf("[store] failed to save file state %s: %v", filepath.Base(fs.Path), err)
 	}
 }
 
-// SaveBatch salva múltiplas sessões e file states de uma vez.
+// SaveBatch saves multiple sessions and file states at once.
 func (s *Store) SaveBatch(sessions map[string]*model.SessionMeta, fileStates map[string]model.FileState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	tx, err := s.db.Begin()
 	if err != nil {
 		return
@@ -143,7 +160,7 @@ func (s *Store) SaveBatch(sessions map[string]*model.SessionMeta, fileStates map
 	defer tx.Rollback()
 
 	stmtSession, _ := tx.Prepare(`INSERT OR REPLACE INTO sessions (session_id, slug, data_json, updated_at) VALUES (?, ?, ?, ?)`)
-	stmtFile, _ := tx.Prepare(`INSERT OR REPLACE INTO file_states (path, mtime, size, offset) VALUES (?, ?, ?, ?)`)
+	stmtFile, _ := tx.Prepare(`INSERT OR REPLACE INTO file_states (path, mtime, size, offset, session_id) VALUES (?, ?, ?, ?, ?)`)
 
 	now := time.Now().UTC().Format(time.RFC3339)
 
@@ -156,7 +173,7 @@ func (s *Store) SaveBatch(sessions map[string]*model.SessionMeta, fileStates map
 	}
 
 	for _, fs := range fileStates {
-		stmtFile.Exec(fs.Path, fs.Mtime.Format(time.RFC3339Nano), fs.Size, fs.Offset)
+		stmtFile.Exec(fs.Path, fs.Mtime.Format(time.RFC3339Nano), fs.Size, fs.Offset, fs.SessionID)
 	}
 
 	stmtSession.Close()
@@ -164,14 +181,14 @@ func (s *Store) SaveBatch(sessions map[string]*model.SessionMeta, fileStates map
 	tx.Commit()
 }
 
-// Exists verifica se o banco existe e tem dados.
+// Exists checks if the database exists and has data.
 func Exists(claudeDir string) bool {
 	dbPath := filepath.Join(claudeDir, ".cc-dash-cache.db")
 	info, err := os.Stat(dbPath)
 	return err == nil && info.Size() > 0
 }
 
-// Close fecha o banco.
+// Close closes the database.
 func (s *Store) Close() error {
 	return s.db.Close()
 }

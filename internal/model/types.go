@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-// SessionMeta contém os metadados extraídos de um arquivo JSONL de sessão.
+// SessionMeta contains metadata extracted from a session JSONL file.
 type SessionMeta struct {
 	SessionID     string                `json:"session_id"`
 	Slug          string                `json:"slug"`
@@ -30,7 +30,7 @@ type SessionMeta struct {
 	UsesWebFetch  bool                  `json:"uses_web_fetch"`
 }
 
-// TokenUsage armazena contagem de tokens por tipo.
+// TokenUsage stores token counts by type.
 type TokenUsage struct {
 	InputTokens      int64 `json:"input_tokens"`
 	OutputTokens     int64 `json:"output_tokens"`
@@ -38,12 +38,12 @@ type TokenUsage struct {
 	CacheWriteTokens int64 `json:"cache_creation_input_tokens"`
 }
 
-// Total retorna a soma de todos os tokens.
+// Total returns the sum of all tokens.
 func (t TokenUsage) Total() int64 {
 	return t.InputTokens + t.OutputTokens + t.CacheReadTokens + t.CacheWriteTokens
 }
 
-// Add soma outro TokenUsage neste.
+// Add adds another TokenUsage to this one.
 func (t *TokenUsage) Add(other TokenUsage) {
 	t.InputTokens += other.InputTokens
 	t.OutputTokens += other.OutputTokens
@@ -51,15 +51,16 @@ func (t *TokenUsage) Add(other TokenUsage) {
 	t.CacheWriteTokens += other.CacheWriteTokens
 }
 
-// FileState rastreia o estado de um arquivo para parsing incremental.
+// FileState tracks the state of a file for incremental parsing.
 type FileState struct {
-	Path   string    `json:"path"`
-	Mtime  time.Time `json:"mtime"`
-	Size   int64     `json:"size"`
-	Offset int64     `json:"offset"`
+	Path      string    `json:"path"`
+	Mtime     time.Time `json:"mtime"`
+	Size      int64     `json:"size"`
+	Offset    int64     `json:"offset"`
+	SessionID string    `json:"session_id,omitempty"`
 }
 
-// StatsCache representa o formato de ~/.claude/stats-cache.json.
+// StatsCache represents the format of ~/.claude/stats-cache.json.
 type StatsCache struct {
 	Version          int                       `json:"version"`
 	LastComputedDate string                    `json:"lastComputedDate"`
@@ -97,7 +98,7 @@ type LongestSession struct {
 	MessageCount int    `json:"messageCount"`
 }
 
-// HistoryEntry representa uma linha de ~/.claude/history.jsonl.
+// HistoryEntry represents a line from ~/.claude/history.jsonl.
 type HistoryEntry struct {
 	Display   string `json:"display"`
 	Timestamp int64  `json:"timestamp"`
@@ -105,7 +106,7 @@ type HistoryEntry struct {
 	SessionID string `json:"sessionId"`
 }
 
-// MemoryEntry representa um arquivo de memória.
+// MemoryEntry represents a memory file.
 type MemoryEntry struct {
 	FilePath    string            `json:"file_path"`
 	Slug        string            `json:"slug"`
@@ -117,7 +118,7 @@ type MemoryEntry struct {
 	Frontmatter map[string]string `json:"frontmatter"`
 }
 
-// PlanFile representa um arquivo de plano.
+// PlanFile represents a plan file.
 type PlanFile struct {
 	Name    string    `json:"name"`
 	Path    string    `json:"path"`
@@ -125,7 +126,7 @@ type PlanFile struct {
 	ModTime time.Time `json:"mod_time"`
 }
 
-// TodoFile representa um arquivo de todo.
+// TodoFile represents a todo file.
 type TodoFile struct {
 	Name    string    `json:"name"`
 	Path    string    `json:"path"`
@@ -141,7 +142,7 @@ type TodoItem struct {
 	SessionID   string `json:"sessionId,omitempty"`
 }
 
-// Settings representa ~/.claude/settings.json.
+// Settings represents ~/.claude/settings.json.
 type Settings struct {
 	Env             map[string]interface{} `json:"env,omitempty"`
 	Permissions     map[string]interface{} `json:"permissions,omitempty"`
@@ -153,21 +154,21 @@ type Settings struct {
 	EffortLevel     string                 `json:"effortLevel,omitempty"`
 }
 
-// SkillInfo representa uma skill instalada.
+// SkillInfo represents an installed skill.
 type SkillInfo struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	Path        string `json:"path"`
 }
 
-// PluginInfo representa um plugin instalado.
+// PluginInfo represents an installed plugin.
 type PluginInfo struct {
 	Name    string `json:"name"`
 	Version string `json:"version,omitempty"`
 	Path    string `json:"path"`
 }
 
-// ProjectSummary agrupa informações de um projeto.
+// ProjectSummary groups information about a project.
 type ProjectSummary struct {
 	Slug          string    `json:"slug"`
 	ProjectPath   string    `json:"project_path"`
@@ -186,7 +187,7 @@ type ToolCount struct {
 	Count int    `json:"count"`
 }
 
-// ReplayData contém dados completos de replay de sessão.
+// ReplayData contains complete session replay data.
 type ReplayData struct {
 	Turns       []ReplayTurn      `json:"turns"`
 	Compactions []CompactionEvent `json:"compactions"`
@@ -228,7 +229,7 @@ type CompactionEvent struct {
 	Summary   string `json:"summary,omitempty"`
 }
 
-// OverviewStats agrega todos os dados da overview.
+// OverviewStats aggregates all overview data.
 type OverviewStats struct {
 	TotalSessions    int              `json:"total_sessions"`
 	TotalMessages    int              `json:"total_messages"`
@@ -242,7 +243,7 @@ type OverviewStats struct {
 	RecentSessions   []SessionMeta    `json:"recent_sessions"`
 }
 
-// CostAnalytics agrega dados de custo.
+// CostAnalytics aggregates cost data.
 type CostAnalytics struct {
 	TotalCost      float64                     `json:"total_cost"`
 	CostByDate     []DailyCost                 `json:"cost_by_date"`
@@ -276,7 +277,7 @@ type CacheEfficiency struct {
 	EstimatedSavings float64 `json:"estimated_savings"`
 }
 
-// ToolAnalytics agrega dados de ferramentas.
+// ToolAnalytics aggregates tool usage data.
 type ToolAnalytics struct {
 	ToolRanking     []ToolRankEntry          `json:"tool_ranking"`
 	ToolsByCategory map[string][]ToolRankEntry `json:"tools_by_category"`
@@ -310,7 +311,7 @@ type FeatureEntry struct {
 	Percentage   float64 `json:"percentage"`
 }
 
-// ActivityData agrega dados de atividade.
+// ActivityData aggregates activity data.
 type ActivityData struct {
 	Heatmap       []HeatmapEntry  `json:"heatmap"`
 	CurrentStreak int             `json:"current_streak"`
@@ -326,7 +327,7 @@ type HeatmapEntry struct {
 	Count int    `json:"count"`
 }
 
-// ExportPayload para download de dados.
+// ExportPayload for data download.
 type ExportPayload struct {
 	Version   string        `json:"version"`
 	ExportedAt string       `json:"exported_at"`
@@ -334,9 +335,90 @@ type ExportPayload struct {
 	Stats     *StatsCache   `json:"stats,omitempty"`
 }
 
-// WSMessage mensagem WebSocket.
+// WSMessage is a WebSocket message.
 type WSMessage struct {
 	Type     string      `json:"type"`
 	Resource string      `json:"resource"`
 	Data     interface{} `json:"data"`
+}
+
+// EfficiencyData aggregates token health and efficiency metrics.
+type EfficiencyData struct {
+	CostPerMessage   CostPerMessageStats `json:"cost_per_message"`
+	ModelComparison  []ModelEfficiency    `json:"model_comparison"`
+	ThinkingImpact   ThinkingImpact      `json:"thinking_impact"`
+	VampireSessions  []VampireSession     `json:"vampire_sessions"`
+	CacheBySession   []SessionCacheInfo   `json:"cache_by_session"`
+	CostDistribution []CostBucket         `json:"cost_distribution"`
+	HealthScore      int                  `json:"health_score"`
+	TotalSessions    int                  `json:"total_sessions"`
+	TotalCost        float64              `json:"total_cost"`
+}
+
+type CostPerMessageStats struct {
+	Mean   float64 `json:"mean"`
+	Median float64 `json:"median"`
+	P90    float64 `json:"p90"`
+	P99    float64 `json:"p99"`
+	Min    float64 `json:"min"`
+	Max    float64 `json:"max"`
+}
+
+type ModelEfficiency struct {
+	Model           string  `json:"model"`
+	Sessions        int     `json:"sessions"`
+	TotalCost       float64 `json:"total_cost"`
+	TotalMessages   int     `json:"total_messages"`
+	CostPerMessage  float64 `json:"cost_per_message"`
+	AvgTokensPerMsg float64 `json:"avg_tokens_per_message"`
+	CacheHitRate    float64 `json:"cache_hit_rate"`
+	InputTokens     int64   `json:"input_tokens"`
+	OutputTokens    int64   `json:"output_tokens"`
+	CacheReadTokens int64   `json:"cache_read_tokens"`
+}
+
+type ThinkingImpact struct {
+	WithThinking    EfficiencyGroup `json:"with_thinking"`
+	WithoutThinking EfficiencyGroup `json:"without_thinking"`
+	CostMultiplier  float64         `json:"cost_multiplier"`
+}
+
+type EfficiencyGroup struct {
+	Sessions       int     `json:"sessions"`
+	AvgCost        float64 `json:"avg_cost"`
+	AvgCostPerMsg  float64 `json:"avg_cost_per_message"`
+	TotalCost      float64 `json:"total_cost"`
+	AvgDuration    float64 `json:"avg_duration"`
+}
+
+type VampireSession struct {
+	SessionID     string  `json:"session_id"`
+	Slug          string  `json:"slug"`
+	FirstPrompt   string  `json:"first_prompt"`
+	Cost          float64 `json:"cost"`
+	Messages      int     `json:"messages"`
+	CostPerMsg    float64 `json:"cost_per_message"`
+	Duration      float64 `json:"duration_minutes"`
+	PrimaryModel  string  `json:"primary_model"`
+	HasThinking   bool    `json:"has_thinking"`
+	HasCompaction bool    `json:"has_compaction"`
+	CacheHitRate  float64 `json:"cache_hit_rate"`
+	StartTime     string  `json:"start_time"`
+}
+
+type SessionCacheInfo struct {
+	SessionID    string  `json:"session_id"`
+	Slug         string  `json:"slug"`
+	FirstPrompt  string  `json:"first_prompt"`
+	CacheHitRate float64 `json:"cache_hit_rate"`
+	Cost         float64 `json:"cost"`
+	Messages     int     `json:"messages"`
+	WastedTokens int64   `json:"wasted_tokens"`
+}
+
+type CostBucket struct {
+	Label string `json:"label"`
+	Min   float64 `json:"min"`
+	Max   float64 `json:"max"`
+	Count int    `json:"count"`
 }

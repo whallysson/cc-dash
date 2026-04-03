@@ -13,9 +13,9 @@ import (
 	"github.com/whallysson/cc-dash/internal/util"
 )
 
-// peekType extrai o tipo top-level de uma linha JSON.
-// O campo "type" top-level tem valores distintos dos aninhados ("message" é aninhado, nunca top-level).
-// Usamos bytes.Contains com valores específicos para evitar confusão com campos aninhados.
+// peekType extracts the top-level type from a JSON line.
+// The top-level "type" field has distinct values from nested ones ("message" is nested, never top-level).
+// We use bytes.Contains with specific values to avoid confusion with nested fields.
 func peekType(line []byte) string {
 	switch {
 	case bytes.Contains(line, []byte(`"type":"user"`)):
@@ -39,7 +39,7 @@ func peekType(line []byte) string {
 	}
 }
 
-// peekStringField extrai um campo string simples usando scan de bytes.
+// peekStringField extracts a simple string field using byte scanning.
 func peekStringField(line []byte, field string) string {
 	needle := []byte(`"` + field + `":"`)
 	idx := bytes.Index(line, needle)
@@ -54,8 +54,8 @@ func peekStringField(line []byte, field string) string {
 	return string(line[start : start+end])
 }
 
-// jsonlLine representa os campos relevantes de uma linha JSONL.
-// Usamos struct parcial para evitar parsear campos irrelevantes.
+// jsonlLine represents the relevant fields of a JSONL line.
+// We use a partial struct to avoid parsing irrelevant fields.
 type jsonlLine struct {
 	Type       string    `json:"type"`
 	Timestamp  string    `json:"timestamp"`
@@ -87,13 +87,13 @@ type contentItem struct {
 	Name string `json:"name,omitempty"`
 }
 
-// ParseSessionFile parseia um arquivo JSONL completo e retorna SessionMeta.
+// ParseSessionFile parses a complete JSONL file and returns SessionMeta.
 func ParseSessionFile(path string) (*model.SessionMeta, int64, error) {
 	return ParseSessionFileFrom(path, 0)
 }
 
-// ParseSessionFileFrom parseia um arquivo JSONL a partir de um offset de bytes.
-// Retorna SessionMeta e o offset final (para parsing incremental).
+// ParseSessionFileFrom parses a JSONL file from a byte offset.
+// Returns SessionMeta and the final offset (for incremental parsing).
 func ParseSessionFileFrom(path string, offset int64) (*model.SessionMeta, int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -136,7 +136,7 @@ func ParseSessionFileFrom(path string, offset int64) (*model.SessionMeta, int64,
 
 		switch lineType {
 		case "progress", "file-history-snapshot", "attachment", "permission-mode":
-			// Skip -- linhas irrelevantes para o índice (50-60% do volume)
+			// Skip - irrelevant lines for the index (50-60% of volume)
 			continue
 
 		case "user":
@@ -150,13 +150,13 @@ func ParseSessionFileFrom(path string, offset int64) (*model.SessionMeta, int64,
 			parseAssistantLine(line, meta)
 
 		case "system":
-			// Detectar compaction
+			// Detect compaction
 			if bytes.Contains(line, []byte(`compact_boundary`)) || bytes.Contains(line, []byte(`"subtype":"compact"`)) {
 				meta.HasCompaction = true
 			}
 		}
 
-		// Extrair metadados das primeiras linhas
+		// Extract metadata from the first lines
 		if lineCount <= 50 && !cwdResolved {
 			if cwd := peekStringField(line, "cwd"); cwd != "" {
 				meta.ProjectPath = cwd
@@ -164,7 +164,7 @@ func ParseSessionFileFrom(path string, offset int64) (*model.SessionMeta, int64,
 			}
 		}
 
-		// Extrair timestamp, version, gitBranch, sessionID, entrypoint
+		// Extract timestamp, version, gitBranch, sessionID, entrypoint
 		if ts := peekStringField(line, "timestamp"); ts != "" {
 			t, err := util.ParseTimestamp(ts)
 			if err == nil {
@@ -201,7 +201,7 @@ func ParseSessionFileFrom(path string, offset int64) (*model.SessionMeta, int64,
 		return nil, 0, err
 	}
 
-	// Calcular campos derivados
+	// Calculate derived fields
 	meta.StartTime = firstTS
 	meta.EndTime = lastTS
 	if !firstTS.IsZero() && !lastTS.IsZero() {
@@ -209,13 +209,13 @@ func ParseSessionFileFrom(path string, offset int64) (*model.SessionMeta, int64,
 	}
 	meta.TotalMsgCount = meta.UserMsgCount + meta.AsstMsgCount
 
-	// Calcular total de tokens e custo
+	// Calculate total tokens and cost
 	for mdl, tokens := range meta.ModelTokens {
 		meta.TotalTokens.Add(tokens)
 		meta.EstimatedCost += model.CalculateCost(mdl, tokens)
 	}
 
-	// Fallback: se não resolveu ProjectPath pelo cwd, usa slug
+	// Fallback: if ProjectPath was not resolved via cwd, use slug
 	if meta.ProjectPath == "" {
 		meta.ProjectPath = util.SlugToPath(slug)
 	}
@@ -223,7 +223,7 @@ func ParseSessionFileFrom(path string, offset int64) (*model.SessionMeta, int64,
 	return meta, offset + bytesRead, nil
 }
 
-// parseUserPrompt extrai o primeiro prompt do usuário.
+// parseUserPrompt extracts the first user prompt.
 func parseUserPrompt(line []byte, meta *model.SessionMeta) {
 	var parsed jsonlLine
 	if err := json.Unmarshal(line, &parsed); err != nil {
@@ -233,20 +233,20 @@ func parseUserPrompt(line []byte, meta *model.SessionMeta) {
 		return
 	}
 
-	// Content pode ser string ou array
+	// Content can be string or array
 	content := parsed.Message.Content
 	if len(content) == 0 {
 		return
 	}
 
-	// Tentar como string
+	// Try as string
 	var textStr string
 	if err := json.Unmarshal(content, &textStr); err == nil {
 		meta.FirstPrompt = util.TruncateString(cleanPrompt(textStr), 500)
 		return
 	}
 
-	// Tentar como array de content items
+	// Try as array of content items
 	var items []contentItem
 	if err := json.Unmarshal(content, &items); err == nil {
 		for _, item := range items {
@@ -258,7 +258,7 @@ func parseUserPrompt(line []byte, meta *model.SessionMeta) {
 	}
 }
 
-// cleanPrompt remove tags XML e whitespace excessivo do prompt.
+// cleanPrompt removes XML tags and excessive whitespace from the prompt.
 func cleanPrompt(s string) string {
 	// Remove tags <system-reminder>...</system-reminder>
 	for {
@@ -277,7 +277,7 @@ func cleanPrompt(s string) string {
 	return s
 }
 
-// parseAssistantLine extrai usage, model, tool calls de uma linha assistant.
+// parseAssistantLine extracts usage, model, and tool calls from an assistant line.
 func parseAssistantLine(line []byte, meta *model.SessionMeta) {
 	var parsed jsonlLine
 	if err := json.Unmarshal(line, &parsed); err != nil {
@@ -292,7 +292,7 @@ func parseAssistantLine(line []byte, meta *model.SessionMeta) {
 		return
 	}
 
-	// Acumular tokens por modelo
+	// Accumulate tokens per model
 	if parsed.Message.Usage != nil {
 		u := parsed.Message.Usage
 		existing := meta.ModelTokens[mdl]
@@ -303,7 +303,7 @@ func parseAssistantLine(line []byte, meta *model.SessionMeta) {
 		meta.ModelTokens[mdl] = existing
 	}
 
-	// Extrair tool calls e features do content
+	// Extract tool calls and features from content
 	if parsed.Message.Content != nil {
 		var items []contentItem
 		if err := json.Unmarshal(parsed.Message.Content, &items); err == nil {
@@ -322,7 +322,7 @@ func parseAssistantLine(line []byte, meta *model.SessionMeta) {
 	}
 }
 
-// detectFeature marca feature flags baseado no nome da ferramenta.
+// detectFeature sets feature flags based on tool name.
 func detectFeature(toolName string, meta *model.SessionMeta) {
 	switch {
 	case toolName == "Agent" || toolName == "TaskCreate" || toolName == "SendMessage" || toolName == "TeamCreate":

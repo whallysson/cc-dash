@@ -18,7 +18,7 @@ import (
 //go:embed all:static
 var staticFS embed.FS
 
-// Server é o servidor HTTP do cc-dash.
+// Server is the cc-dash HTTP server.
 type Server struct {
 	idx      *index.Index
 	mux      *http.ServeMux
@@ -27,7 +27,7 @@ type Server struct {
 	wsHub    *WSHub
 }
 
-// New cria um novo servidor.
+// New creates a new server.
 func New(idx *index.Index, port int) *Server {
 	s := &Server{
 		idx:   idx,
@@ -39,12 +39,12 @@ func New(idx *index.Index, port int) *Server {
 	return s
 }
 
-// GetWSHub retorna o hub WebSocket para uso externo (watcher).
+// GetWSHub returns the WebSocket hub for external use (watcher).
 func (s *Server) GetWSHub() *WSHub {
 	return s.wsHub
 }
 
-// registerRoutes registra todas as rotas da API.
+// registerRoutes registers all API routes.
 func (s *Server) registerRoutes() {
 	// API routes
 	s.mux.HandleFunc("GET /api/stats", s.handleStats)
@@ -62,24 +62,25 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/plans", s.handlePlans)
 	s.mux.HandleFunc("GET /api/todos", s.handleTodos)
 	s.mux.HandleFunc("GET /api/settings", s.handleSettings)
+	s.mux.HandleFunc("GET /api/efficiency", s.handleEfficiency)
 	s.mux.HandleFunc("POST /api/export", s.handleExport)
 	s.mux.HandleFunc("GET /ws", s.wsHub.HandleWS)
 
-	// SPA: servir frontend estático com fallback para index.html
+	// SPA: serve static frontend with index.html fallback
 	s.mux.Handle("/", s.spaHandler())
 }
 
-// spaHandler serve arquivos estáticos com fallback para index.html (SPA routing).
+// spaHandler serves static files with index.html fallback (SPA routing).
 func (s *Server) spaHandler() http.Handler {
 	sub, err := fs.Sub(staticFS, "static")
 	if err != nil {
-		log.Printf("[server] aviso: frontend estático não encontrado: %v", err)
+		log.Printf("[server] warning: static frontend not found: %v", err)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html")
 			fmt.Fprintf(w, `<!DOCTYPE html><html><body>
 				<h1>cc-dash</h1>
-				<p>Frontend não encontrado. Execute <code>make build-frontend</code> primeiro.</p>
-				<p>API disponível em <a href="/api/stats">/api/stats</a></p>
+				<p>Frontend not found. Run <code>make build-frontend</code> first.</p>
+				<p>API available at <a href="/api/stats">/api/stats</a></p>
 			</body></html>`)
 		})
 	}
@@ -87,16 +88,16 @@ func (s *Server) spaHandler() http.Handler {
 	fileServer := http.FileServer(http.FS(sub))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Tentar servir o arquivo estático
+		// Try to serve the static file
 		path := r.URL.Path
 		if path == "/" {
 			path = "/index.html"
 		}
 
-		// Verificar se o arquivo existe
+		// Check if file exists
 		f, err := sub.Open(path[1:]) // remove leading /
 		if err != nil {
-			// Fallback: servir index.html para rotas do SPA
+			// Fallback: serve index.html for SPA routes
 			r.URL.Path = "/"
 			fileServer.ServeHTTP(w, r)
 			return
@@ -107,7 +108,7 @@ func (s *Server) spaHandler() http.Handler {
 	})
 }
 
-// Start inicia o servidor HTTP.
+// Start starts the HTTP server.
 func (s *Server) Start(openBrowser bool) error {
 	addr := fmt.Sprintf(":%d", s.port)
 
@@ -121,11 +122,11 @@ func (s *Server) Start(openBrowser bool) error {
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("porta %d em uso: %w", s.port, err)
+		return fmt.Errorf("port %d in use: %w", s.port, err)
 	}
 
 	url := fmt.Sprintf("http://localhost:%d", s.port)
-	log.Printf("[server] escutando em %s", url)
+	log.Printf("[server] listening on %s", url)
 
 	if openBrowser {
 		go func() {
@@ -137,12 +138,12 @@ func (s *Server) Start(openBrowser bool) error {
 	return s.srv.Serve(ln)
 }
 
-// Shutdown encerra o servidor graciosamente.
+// Shutdown gracefully stops the server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.srv.Shutdown(ctx)
 }
 
-// withMiddleware aplica middlewares globais.
+// withMiddleware applies global middleware.
 func (s *Server) withMiddleware(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// CORS para dev
@@ -159,7 +160,7 @@ func (s *Server) withMiddleware(h http.Handler) http.Handler {
 	})
 }
 
-// openURL abre uma URL no browser padrão.
+// openURL opens a URL in the default browser.
 func openURL(url string) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
@@ -173,7 +174,7 @@ func openURL(url string) {
 	_ = cmd.Start()
 }
 
-// FindFreePort encontra uma porta livre a partir da porta indicada.
+// FindFreePort finds a free port starting from the given port.
 func FindFreePort(startPort int) (int, error) {
 	for port := startPort; port < startPort+100; port++ {
 		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
@@ -183,5 +184,5 @@ func FindFreePort(startPort int) (int, error) {
 		ln.Close()
 		return port, nil
 	}
-	return 0, fmt.Errorf("nenhuma porta livre encontrada entre %d e %d", startPort, startPort+100)
+	return 0, fmt.Errorf("no free port found between %d and %d", startPort, startPort+100)
 }

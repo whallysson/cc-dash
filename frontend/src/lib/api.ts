@@ -1,4 +1,4 @@
-import type { OverviewStats, SessionMeta, ProjectSummary, CostAnalytics, ToolAnalytics, ActivityData, ReplayData, HistoryEntry, MemoryEntry, PlanFile, TodoFile } from './types'
+import type { OverviewStats, SessionMeta, ProjectSummary, CostAnalytics, ToolAnalytics, ActivityData, ReplayData, HistoryEntry, MemoryEntry, PlanFile, TodoFile, EfficiencyData } from './types'
 
 const BASE = ''
 
@@ -36,5 +36,6 @@ export const api = {
   plans: () => get<PlanFile[]>('/api/plans'),
   todos: () => get<TodoFile[]>('/api/todos'),
 
+  efficiency: () => get<EfficiencyData>('/api/efficiency'),
   settings: () => get<{ settings: Record<string, unknown>; plugins: unknown[] }>('/api/settings'),
 }

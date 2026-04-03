@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// ReadStatsCache lê ~/.claude/stats-cache.json.
+// ReadStatsCache reads ~/.claude/stats-cache.json.
 func ReadStatsCache(claudeDir string) (*StatsCache, error) {
 	path := filepath.Join(claudeDir, "stats-cache.json")
 	data, err := os.ReadFile(path)
@@ -24,7 +24,7 @@ func ReadStatsCache(claudeDir string) (*StatsCache, error) {
 	return &stats, nil
 }
 
-// ReadHistory lê ~/.claude/history.jsonl com limite e busca.
+// ReadHistory reads ~/.claude/history.jsonl with limit and search.
 func ReadHistory(claudeDir string, limit int, query string) ([]HistoryEntry, error) {
 	path := filepath.Join(claudeDir, "history.jsonl")
 	f, err := os.Open(path)
@@ -48,7 +48,7 @@ func ReadHistory(claudeDir string, limit int, query string) ([]HistoryEntry, err
 		entries = append(entries, entry)
 	}
 
-	// Ordenar por timestamp decrescente
+	// Sort by timestamp descending
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Timestamp > entries[j].Timestamp
 	})
@@ -60,15 +60,15 @@ func ReadHistory(claudeDir string, limit int, query string) ([]HistoryEntry, err
 	return entries, scanner.Err()
 }
 
-// ReadMemories lê todos os arquivos de memória.
+// ReadMemories reads all memory files.
 func ReadMemories(claudeDir string) ([]MemoryEntry, error) {
 	var memories []MemoryEntry
 
-	// Memória global
+	// Global memory
 	globalDir := filepath.Join(claudeDir, "memory")
 	readMemDir(globalDir, "global", &memories)
 
-	// Memória por projeto
+	// Per-project memory
 	projectsDir := filepath.Join(claudeDir, "projects")
 	entries, err := os.ReadDir(projectsDir)
 	if err == nil {
@@ -125,7 +125,7 @@ func readMemDir(dir, slug string, out *[]MemoryEntry) {
 	}
 }
 
-// ReadPlans lê todos os planos de ~/.claude/plans/.
+// ReadPlans reads all plans from ~/.claude/plans/.
 func ReadPlans(claudeDir string) ([]PlanFile, error) {
 	dir := filepath.Join(claudeDir, "plans")
 	entries, err := os.ReadDir(dir)
@@ -162,7 +162,7 @@ func ReadPlans(claudeDir string) ([]PlanFile, error) {
 	return plans, nil
 }
 
-// ReadTodos lê todos os arquivos de todo de ~/.claude/todos/.
+// ReadTodos reads all todo files from ~/.claude/todos/.
 func ReadTodos(claudeDir string) ([]TodoFile, error) {
 	dir := filepath.Join(claudeDir, "todos")
 	entries, err := os.ReadDir(dir)
@@ -187,7 +187,7 @@ func ReadTodos(claudeDir string) ([]TodoFile, error) {
 
 		var items []TodoItem
 		if err := json.Unmarshal(data, &items); err != nil {
-			// Tentar como objeto único
+			// Try as single object
 			var single TodoItem
 			if err := json.Unmarshal(data, &single); err == nil {
 				items = []TodoItem{single}
@@ -211,7 +211,7 @@ func ReadTodos(claudeDir string) ([]TodoFile, error) {
 	return todos, nil
 }
 
-// ReadSettings lê ~/.claude/settings.json.
+// ReadSettings reads ~/.claude/settings.json.
 func ReadSettings(claudeDir string) (*Settings, error) {
 	path := filepath.Join(claudeDir, "settings.json")
 	data, err := os.ReadFile(path)
@@ -225,7 +225,7 @@ func ReadSettings(claudeDir string) (*Settings, error) {
 	return &settings, nil
 }
 
-// ReadInstalledPlugins lê ~/.claude/plugins/installed_plugins.json.
+// ReadInstalledPlugins reads ~/.claude/plugins/installed_plugins.json.
 func ReadInstalledPlugins(claudeDir string) ([]PluginInfo, error) {
 	path := filepath.Join(claudeDir, "plugins", "installed_plugins.json")
 	data, err := os.ReadFile(path)
@@ -250,7 +250,7 @@ func ReadInstalledPlugins(claudeDir string) ([]PluginInfo, error) {
 	return plugins, nil
 }
 
-// GetClaudeStorageBytes retorna o tamanho total do diretório ~/.claude/.
+// GetClaudeStorageBytes returns the total size of the ~/.claude/ directory.
 func GetClaudeStorageBytes(claudeDir string) int64 {
 	var total int64
 	filepath.Walk(claudeDir, func(_ string, info os.FileInfo, err error) error {
@@ -263,7 +263,7 @@ func GetClaudeStorageBytes(claudeDir string) int64 {
 	return total
 }
 
-// parseFrontmatter extrai campos YAML de frontmatter simples.
+// parseFrontmatter extracts simple YAML frontmatter fields.
 func parseFrontmatter(content string) (map[string]string, string) {
 	fm := make(map[string]string)
 	if !strings.HasPrefix(content, "---\n") {
@@ -295,7 +295,7 @@ func parseFrontmatter(content string) (map[string]string, string) {
 	return fm, strings.TrimLeft(body, "\n")
 }
 
-// containsCI busca case-insensitive.
+// containsCI performs a case-insensitive search.
 func containsCI(haystack, needle string) bool {
 	return strings.Contains(
 		strings.ToLower(haystack),
@@ -303,7 +303,7 @@ func containsCI(haystack, needle string) bool {
 	)
 }
 
-// IsStaleMemory verifica se um arquivo de memória está "stale" (>30 dias).
+// IsStaleMemory checks if a memory file is stale (>30 days old).
 func IsStaleMemory(modTime time.Time) bool {
 	return time.Since(modTime) > 30*24*time.Hour
 }
