@@ -39,7 +39,7 @@ export function Component() {
 
       <Card className="divide-y divide-border">
         {data.map((entry, i) => (
-          <div key={i} className="flex items-start gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors">
+          <div key={i} className="flex items-start gap-3 px-4 py-2.5 hover:bg-accent transition-colors">
             <Terminal className="size-3.5 text-muted-foreground/50 shrink-0 mt-1" />
             <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5 tabular-nums">
               {new Date(entry.timestamp).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}

@@ -305,7 +305,7 @@ export function Component() {
                     {s.first_prompt || 'No prompt'}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {slugToName(s.slug)} - {formatRelative(s.start_time)}
+                    {slugToName(s.slug)} - {formatRelative(s.end_time || s.start_time)}
                   </p>
                 </div>
                 <div className="text-right ml-4 shrink-0">

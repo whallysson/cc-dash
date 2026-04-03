@@ -12,6 +12,8 @@ export function formatCost(cost: number): string {
 }
 
 export function formatDuration(minutes: number): string {
+  if (!isFinite(minutes) || minutes < 0) return '-'
+  if (minutes > 525600) return `${Math.round(minutes / 525600)}y` // > 1 year = corrupted
   if (minutes < 1) return '<1m'
   if (minutes < 60) return `${Math.round(minutes)}m`
   const h = Math.floor(minutes / 60)
@@ -51,10 +53,10 @@ export function formatRelative(iso: string): string {
 }
 
 export function slugToName(slug: string): string {
-  // Remove prefix -Users-<user>- and simplify
+  if (!slug) return 'Unknown Project'
   const cleaned = slug.replace(/^-Users-[^-]+-/, '')
   const parts = cleaned.split('-').filter(Boolean)
-  // Take last 2-3 meaningful parts
+  if (parts.length === 0) return 'Unknown Project'
   return parts.slice(-2).join('/')
 }
 

@@ -127,7 +127,7 @@ function TurnCard({ turn }: { turn: ReplayTurn }) {
 export function Component() {
   const { id } = useParams<{ id: string }>()
   const { data: session } = useApi(() => api.session(id!), [id])
-  const { data: replay, loading } = useApi(() => api.replay(id!, 0, 200), [id])
+  const { data: replay, loading } = useApi(() => api.replay(id!, 0, 200, true), [id])
 
   if (loading || !replay) return <ReplaySkeleton />
 
@@ -148,7 +148,7 @@ export function Component() {
           {replay.version && <Badge variant="outline">v{replay.version}</Badge>}
           {replay.git_branch && <Badge variant="secondary">{replay.git_branch}</Badge>}
           <Badge variant="secondary">
-            {replay.turns.filter(t => t.text || (t.tool_calls && t.tool_calls.length > 0) || (t.has_thinking && t.thinking_text)).length} turns
+            {(replay.turns ?? []).filter(t => t.text || (t.tool_calls && t.tool_calls.length > 0) || (t.has_thinking && t.thinking_text)).length} turns
           </Badge>
           <Badge>{formatCost(replay.total_cost)}</Badge>
         </div>

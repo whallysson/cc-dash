@@ -14,7 +14,8 @@ import (
 // ParseReplay parses a session JSONL file for replay, with pagination.
 // offset: number of relevant turns to skip
 // limit: maximum number of turns to return (0 = all)
-func ParseReplay(path string, offset, limit int) (*model.ReplayData, error) {
+// latest: if true, return the last N turns instead of first N
+func ParseReplay(path string, offset, limit int, latest bool) (*model.ReplayData, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -30,10 +31,9 @@ func ParseReplay(path string, offset, limit int) (*model.ReplayData, error) {
 	}
 
 	var (
-		turnIndex    int
-		collected    int
-		skipped      int
-		totalCost    float64
+		turnIndex int
+		totalCost float64
+		allTurns  []model.ReplayTurn
 	)
 
 	for scanner.Scan() {
@@ -50,17 +50,7 @@ func ParseReplay(path string, offset, limit int) (*model.ReplayData, error) {
 				continue
 			}
 			turnIndex++
-
-			if skipped < offset {
-				skipped++
-				continue
-			}
-			if limit > 0 && collected >= limit {
-				data.HasMore = true
-				continue
-			}
-			data.Turns = append(data.Turns, *turn)
-			collected++
+			allTurns = append(allTurns, *turn)
 
 		case "assistant":
 			turn := parseAssistantTurn(line, turnIndex)
@@ -69,17 +59,7 @@ func ParseReplay(path string, offset, limit int) (*model.ReplayData, error) {
 			}
 			totalCost += turn.Cost
 			turnIndex++
-
-			if skipped < offset {
-				skipped++
-				continue
-			}
-			if limit > 0 && collected >= limit {
-				data.HasMore = true
-				continue
-			}
-			data.Turns = append(data.Turns, *turn)
-			collected++
+			allTurns = append(allTurns, *turn)
 
 		case "system":
 			if compaction := parseCompaction(line, turnIndex); compaction != nil {
@@ -106,7 +86,32 @@ func ParseReplay(path string, offset, limit int) (*model.ReplayData, error) {
 	}
 
 	data.TotalCost = totalCost
-	data.NextOffset = offset + collected
+
+	// Apply pagination
+	total := len(allTurns)
+	if latest && limit > 0 {
+		// Return last N turns
+		start := total - limit
+		if start < 0 {
+			start = 0
+		}
+		data.Turns = allTurns[start:]
+		data.HasMore = start > 0
+		data.NextOffset = start
+	} else {
+		// Return from offset, up to limit
+		start := offset
+		if start > total {
+			start = total
+		}
+		end := total
+		if limit > 0 && start+limit < end {
+			end = start + limit
+		}
+		data.Turns = allTurns[start:end]
+		data.HasMore = end < total
+		data.NextOffset = end
+	}
 
 	return data, scanner.Err()
 }

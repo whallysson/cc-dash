@@ -17,8 +17,8 @@ export const api = {
 
   session: (id: string) => get<SessionMeta>(`/api/sessions/${id}`),
 
-  replay: (id: string, offset = 0, limit = 0) =>
-    get<ReplayData>(`/api/sessions/${id}/replay?offset=${offset}&limit=${limit}`),
+  replay: (id: string, offset = 0, limit = 200, latest = true) =>
+    get<ReplayData>(`/api/sessions/${id}/replay?offset=${offset}&limit=${limit}&latest=${latest}`),
 
   projects: () => get<ProjectSummary[]>('/api/projects'),
 

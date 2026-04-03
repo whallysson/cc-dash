@@ -33,7 +33,7 @@ export function Component() {
             <Card key={p.path}>
               <button
                 onClick={() => setExpanded(isExpanded ? null : p.path)}
-                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted/30 transition-colors rounded-xl"
+                className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-accent transition-colors rounded-xl"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <FileText className="size-4 text-muted-foreground shrink-0" />

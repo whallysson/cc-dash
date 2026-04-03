@@ -114,7 +114,7 @@ export function Component() {
                   {formatDuration(s.duration_minutes)}
                 </TableCell>
                 <TableCell className="text-right text-muted-foreground text-xs tabular-nums">
-                  {formatRelative(s.start_time)}
+                  {formatRelative(s.end_time || s.start_time)}
                 </TableCell>
               </TableRow>
             ))}

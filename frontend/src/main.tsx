@@ -31,11 +31,11 @@ const router = createBrowserRouter([
 ])
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
+
     <ThemeProvider>
       <TooltipProvider>
         <RouterProvider router={router} />
       </TooltipProvider>
     </ThemeProvider>
-  </StrictMode>
+
 )

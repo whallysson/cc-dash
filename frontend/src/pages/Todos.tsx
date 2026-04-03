@@ -50,7 +50,7 @@ export function Component() {
 
       <Card className="divide-y divide-border">
         {allItems.map((item, i) => (
-          <div key={i} className="flex items-start gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
+          <div key={i} className="flex items-start gap-3 px-4 py-2.5 hover:bg-accent transition-colors">
             <div className="mt-0.5 shrink-0">
               <StatusIcon status={item.status} />
             </div>

@@ -110,7 +110,7 @@ func (s *Server) spaHandler() http.Handler {
 
 // Start starts the HTTP server.
 func (s *Server) Start(openBrowser bool) error {
-	addr := fmt.Sprintf(":%d", s.port)
+	addr := fmt.Sprintf("127.0.0.1:%d", s.port)
 
 	s.srv = &http.Server{
 		Addr:         addr,
@@ -177,7 +177,7 @@ func openURL(url string) {
 // FindFreePort finds a free port starting from the given port.
 func FindFreePort(startPort int) (int, error) {
 	for port := startPort; port < startPort+100; port++ {
-		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err != nil {
 			continue
 		}

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/whallysson/cc-dash/internal/model"
@@ -24,14 +26,17 @@ func writeError(w http.ResponseWriter, code int, msg string) {
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
-func queryInt(r *http.Request, key string, defaultVal int) int {
+func queryInt(r *http.Request, key string, defaultVal, maxVal int) int {
 	s := r.URL.Query().Get(key)
 	if s == "" {
 		return defaultVal
 	}
 	v, err := strconv.Atoi(s)
-	if err != nil {
+	if err != nil || v < 1 {
 		return defaultVal
+	}
+	if maxVal > 0 && v > maxVal {
+		return maxVal
 	}
 	return v
 }
@@ -57,8 +62,8 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
-	page := queryInt(r, "page", 1)
-	limit := queryInt(r, "limit", 50)
+	page := queryInt(r, "page", 1, 0)
+	limit := queryInt(r, "limit", 50, 500)
 	sortBy := r.URL.Query().Get("sort")
 	query := r.URL.Query().Get("q")
 
@@ -84,8 +89,9 @@ func (s *Server) handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSessionReplay(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	offset := queryInt(r, "offset", 0)
-	limit := queryInt(r, "limit", 0)
+	offset := queryInt(r, "offset", 0, 0)
+	limit := queryInt(r, "limit", 0, 1000)
+	latest := r.URL.Query().Get("latest") == "true"
 
 	filePath := s.idx.GetFilePathForSession(id)
 	if filePath == "" {
@@ -93,7 +99,7 @@ func (s *Server) handleSessionReplay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := replay.ParseReplay(filePath, offset, limit)
+	data, err := replay.ParseReplay(filePath, offset, limit, latest)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to parse replay: "+err.Error())
 		return
@@ -136,7 +142,7 @@ func (s *Server) handleActivity(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
-	limit := queryInt(r, "limit", 200)
+	limit := queryInt(r, "limit", 200, 1000)
 	query := r.URL.Query().Get("q")
 
 	entries, err := model.ReadHistory(s.idx.GetClaudeDir(), limit, query)
@@ -162,6 +168,7 @@ func (s *Server) handleMemoryUpdate(w http.ResponseWriter, r *http.Request) {
 		FilePath string `json:"file_path"`
 		Content  string `json:"content"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10MB max
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
@@ -171,8 +178,20 @@ func (s *Server) handleMemoryUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := os.WriteFile(body.FilePath, []byte(body.Content), 0644); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to save: "+err.Error())
+	// Validate path is within ~/.claude/ to prevent path traversal
+	absPath, err := filepath.Abs(body.FilePath)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid path")
+		return
+	}
+	absClaude, _ := filepath.Abs(s.idx.GetClaudeDir())
+	if !strings.HasPrefix(absPath, absClaude+string(filepath.Separator)) {
+		writeError(w, http.StatusForbidden, "path must be within claude directory")
+		return
+	}
+
+	if err := os.WriteFile(absPath, []byte(body.Content), 0644); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to save")
 		return
 	}
 	writeJSON(w, map[string]bool{"ok": true})

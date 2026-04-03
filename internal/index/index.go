@@ -3,6 +3,8 @@ package index
 import (
 	"log"
 	"math"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -117,8 +119,9 @@ func (idx *Index) Build() error {
 func (idx *Index) insertLocked(meta *model.SessionMeta, state model.FileState) {
 	sid := meta.SessionID
 	if sid == "" {
-		// No sessionID, use file path as key
-		sid = state.Path
+		// No sessionID: extract UUID from filename (e.g. "94444416-...-790b.jsonl")
+		base := filepath.Base(state.Path)
+		sid = strings.TrimSuffix(base, ".jsonl")
 		meta.SessionID = sid
 	}
 
@@ -745,17 +748,36 @@ func calculateStreaks(heatmap []model.HeatmapEntry) (current, longest int) {
 	return current, longest
 }
 
-// GetFilePathForSession returns the JSONL file path for a session.
+// GetFilePathForSession returns the main JSONL file path for a session.
+// Constructs the path deterministically from session metadata instead of
+// relying on map iteration (which is random in Go and would return
+// subagent files unpredictably).
 func (idx *Index) GetFilePathForSession(sessionID string) string {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 
+	meta, ok := idx.sessions[sessionID]
+	if !ok {
+		return ""
+	}
+
+	// Main session file: <claudeDir>/projects/<slug>/<sessionId>.jsonl
+	candidate := filepath.Join(idx.claudeDir, "projects", meta.Slug, sessionID+".jsonl")
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
+	}
+
+	// Fallback: search fileToSess, prefer non-subagent paths
+	var fallback string
 	for path, sid := range idx.fileToSess {
 		if sid == sessionID {
-			return path
+			if !strings.Contains(path, "/subagents/") {
+				return path
+			}
+			fallback = path
 		}
 	}
-	return ""
+	return fallback
 }
 
 // GetClaudeDir returns the Claude base directory.

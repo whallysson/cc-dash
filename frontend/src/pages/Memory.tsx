@@ -57,7 +57,7 @@ export function Component() {
             <Card key={m.file_path}>
               <button
                 onClick={() => toggleExpand(m.file_path)}
-                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted/30 transition-colors rounded-xl"
+                className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-accent transition-colors rounded-xl"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">

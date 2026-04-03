@@ -61,7 +61,7 @@ export function Component() {
   if (currentWeek.length > 0) weeks.push(currentWeek)
 
   function getColor(count: number): string {
-    if (count === 0) return 'bg-muted/30'
+    if (count === 0) return 'border border-border/60 bg-background'
     const intensity = count / maxCount
     if (intensity > 0.75) return 'bg-primary'
     if (intensity > 0.5) return 'bg-primary/70'
@@ -79,7 +79,7 @@ export function Component() {
     return { hour: `${key}h`, count: data.peak_hours[key] || data.peak_hours[String(h)] || 0 }
   })
 
-  const dayLabels = ['', 'Mon', '', 'Wed', '', 'Fri', '']
+  const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
   return (
     <div className="flex flex-col gap-6">
@@ -108,31 +108,32 @@ export function Component() {
           <CardDescription>365-day contribution graph</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-[3px] overflow-x-auto pb-2">
-            <div className="flex flex-col gap-[3px] mr-1 shrink-0">
-              {dayLabels.map((l, i) => (
-                <div key={i} className="h-[12px] text-[10px] text-muted-foreground leading-[12px]">{l}</div>
-              ))}
-            </div>
+          <div className="grid gap-[2px]" style={{ gridTemplateColumns: `24px repeat(${weeks.length}, 1fr)` }}>
+            {dayLabels.map((l, i) => (
+              <div key={`label-${i}`} className="text-[10px] text-muted-foreground leading-none flex items-center" style={{ gridColumn: 1, gridRow: i + 1 }}>{l}</div>
+            ))}
             {weeks.map((week, wi) => (
-              <div key={wi} className="flex flex-col gap-[3px]">
-                {Array.from({ length: 7 }, (_, dow) => {
-                  const day = week.find(d => d.dow === dow)
-                  if (!day) return <div key={dow} className="size-[12px]" />
-                  return (
-                    <div key={dow} className={`size-[12px] rounded-sm ${getColor(day.count)} group relative cursor-default`}>
-                      <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 rounded-lg border bg-popover px-2 py-1 text-[10px] shadow-lg opacity-0 group-hover:opacity-100 whitespace-nowrap z-10 pointer-events-none">
+              Array.from({ length: 7 }, (_, dow) => {
+                const day = week.find(d => d.dow === dow)
+                return (
+                  <div
+                    key={`${wi}-${dow}`}
+                    className={`aspect-square rounded-sm ${day ? getColor(day.count) : ''} group/cell relative cursor-default`}
+                    style={{ gridColumn: wi + 2, gridRow: dow + 1 }}
+                  >
+                    {day && day.count > 0 && (
+                      <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 rounded-lg border bg-popover text-popover-foreground px-2.5 py-1 text-[10px] shadow-lg opacity-0 group-hover/cell:opacity-100 whitespace-nowrap z-50 pointer-events-none">
                         {day.date}: {day.count} sessions
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
+                    )}
+                  </div>
+                )
+              })
             ))}
           </div>
           <div className="flex items-center gap-1.5 mt-3 justify-end">
             <span className="text-[10px] text-muted-foreground mr-1">Less</span>
-            <div className="size-[10px] rounded-sm bg-muted/30" />
+            <div className="size-[10px] rounded-sm border border-border bg-background" />
             <div className="size-[10px] rounded-sm bg-primary/25" />
             <div className="size-[10px] rounded-sm bg-primary/45" />
             <div className="size-[10px] rounded-sm bg-primary/70" />
